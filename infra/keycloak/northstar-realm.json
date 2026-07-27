@@ -1,0 +1,95 @@
+{
+  "realm": "northstar",
+  "enabled": true,
+  "displayName": "Northstar AI Control Tower",
+  "registrationAllowed": false,
+  "resetPasswordAllowed": true,
+  "loginWithEmailAllowed": true,
+  "roles": {
+    "realm": [
+      { "name": "viewer", "description": "Read governed assets and runtime state" },
+      { "name": "operator", "description": "Register assets and submit evidence" },
+      { "name": "reviewer", "description": "Approve governed lifecycle transitions" },
+      { "name": "admin", "description": "Administer the control plane" }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "northstar-api",
+      "name": "Northstar Control Plane API",
+      "enabled": true,
+      "bearerOnly": true,
+      "protocol": "openid-connect"
+    },
+    {
+      "clientId": "northstar-portal",
+      "name": "Northstar Governance Portal",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "protocol": "openid-connect",
+      "redirectUris": [
+        "http://localhost:5173/*",
+        "http://127.0.0.1:5173/*"
+      ],
+      "webOrigins": [
+        "http://localhost:5173",
+        "http://127.0.0.1:5173"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256"
+      },
+      "protocolMappers": [
+        {
+          "name": "northstar-api-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "northstar-api",
+            "access.token.claim": "true"
+          }
+        }
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "admin@northstar.local",
+      "email": "admin@northstar.local",
+      "firstName": "Northstar",
+      "lastName": "Administrator",
+      "enabled": true,
+      "emailVerified": true,
+      "realmRoles": ["viewer", "operator", "reviewer", "admin"],
+      "credentials": [
+        { "type": "password", "value": "northstar", "temporary": false }
+      ]
+    },
+    {
+      "username": "reviewer@northstar.local",
+      "email": "reviewer@northstar.local",
+      "firstName": "Governance",
+      "lastName": "Reviewer",
+      "enabled": true,
+      "emailVerified": true,
+      "realmRoles": ["viewer", "reviewer"],
+      "credentials": [
+        { "type": "password", "value": "northstar", "temporary": false }
+      ]
+    },
+    {
+      "username": "operator@northstar.local",
+      "email": "operator@northstar.local",
+      "firstName": "Platform",
+      "lastName": "Operator",
+      "enabled": true,
+      "emailVerified": true,
+      "realmRoles": ["viewer", "operator"],
+      "credentials": [
+        { "type": "password", "value": "northstar", "temporary": false }
+      ]
+    }
+  ]
+}

@@ -17,6 +17,10 @@ export const theme = createTheme({
     fontFamily: "Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif",
     h1: { fontWeight: 760, letterSpacing: "-0.045em" },
     h2: { fontWeight: 740, letterSpacing: "-0.025em" },
+    h3: { fontWeight: 800, letterSpacing: "-0.035em" },
+    h4: { fontWeight: 800, letterSpacing: "-0.025em" },
+    h5: { fontWeight: 800, letterSpacing: "-0.018em" },
+    h6: { fontWeight: 800, letterSpacing: "-0.01em" },
     button: { textTransform: "none", fontWeight: 700 },
   },
   components: {

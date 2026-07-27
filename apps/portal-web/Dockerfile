@@ -6,6 +6,10 @@ RUN npm ci
 COPY apps/portal-web ./
 ARG VITE_API_URL=http://localhost:8000
 ENV VITE_API_URL=${VITE_API_URL}
+ARG VITE_AUTH_MODE=fixture
+ENV VITE_AUTH_MODE=${VITE_AUTH_MODE}
+ARG VITE_KEYCLOAK_URL=http://localhost:8080
+ENV VITE_KEYCLOAK_URL=${VITE_KEYCLOAK_URL}
 RUN npm run build
 
 FROM nginx:1.27-alpine

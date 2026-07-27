@@ -1,6 +1,17 @@
 name: northstar
 
 services:
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.7.0
+    command: start-dev --import-realm
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: northstar
+    volumes:
+      - ../keycloak/northstar-realm.json:/opt/keycloak/data/import/northstar-realm.json:ro
+    ports:
+      - "8080:8080"
+
   postgres:
     image: postgres:17-alpine
     environment:
@@ -21,11 +32,17 @@ services:
       dockerfile: services/control-plane-api/Dockerfile
     environment:
       NORTHSTAR_DATABASE_URL: postgresql+psycopg://northstar:northstar@postgres:5432/northstar
+      NORTHSTAR_AUTH_MODE: keycloak
+      NORTHSTAR_AUTH_ISSUER: http://localhost:8080/realms/northstar
+      NORTHSTAR_AUTH_JWKS_URL: http://keycloak:8080/realms/northstar/protocol/openid-connect/certs
+      NORTHSTAR_AUTH_AUDIENCE: northstar-api
     ports:
       - "8000:8000"
     depends_on:
       postgres:
         condition: service_healthy
+      keycloak:
+        condition: service_started
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz')"]
       interval: 10s
@@ -38,6 +55,8 @@ services:
       dockerfile: apps/portal-web/Dockerfile
       args:
         VITE_API_URL: http://localhost:8000
+        VITE_AUTH_MODE: keycloak
+        VITE_KEYCLOAK_URL: http://localhost:8080
     ports:
       - "5173:80"
     depends_on:
