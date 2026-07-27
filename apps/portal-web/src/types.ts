@@ -50,3 +50,60 @@ export type NewAsset = Pick<
   Asset,
   "asset_id" | "version" | "asset_type" | "display_name" | "owner" | "intended_use"
 >;
+
+export interface SessionUser {
+  subject: string;
+  email: string;
+  display_name: string;
+  roles: string[];
+  auth_mode: string;
+}
+
+export interface AgentSkill {
+  skill_id: string;
+  name: string;
+  description: string;
+  tags: string[];
+  input_modes: string[];
+  output_modes: string[];
+}
+
+export interface AgentDetail {
+  asset: Asset;
+  agent_card: {
+    name: string;
+    description: string;
+    protocol_version: string;
+    url: string;
+    preferred_transport: string;
+    capabilities: Record<string, boolean>;
+    skills: AgentSkill[];
+  };
+  dependencies: Array<{
+    asset_id: string;
+    version: string;
+    relationship: string;
+    display_name: string;
+    asset_type: string;
+  }>;
+  controls: Array<{
+    control_id: string;
+    name: string;
+    status: string;
+    evidence: string;
+  }>;
+  health: {
+    status: string;
+    latency_ms: number | null;
+    last_checked_at: string | null;
+  };
+  version_history: Asset[];
+  audit_events: Array<{
+    event_id: string;
+    action: string;
+    actor_email: string;
+    detail: string;
+    created_at: string;
+  }>;
+  runtime_connected: boolean;
+}

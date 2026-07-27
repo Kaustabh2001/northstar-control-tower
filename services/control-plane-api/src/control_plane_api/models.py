@@ -1,6 +1,6 @@
 from datetime import UTC, datetime
 
-from sqlalchemy import JSON, DateTime, String, Text
+from sqlalchemy import JSON, DateTime, Integer, String, Text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -31,5 +31,37 @@ class AssetRecord(Base):
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now, onupdate=utc_now
+    )
+
+
+class AgentDetailRecord(Base):
+    __tablename__ = "agent_details"
+
+    asset_id: Mapped[str] = mapped_column(String(120), primary_key=True)
+    version: Mapped[str] = mapped_column(String(80), primary_key=True)
+    agent_card: Mapped[dict] = mapped_column(JSON)
+    dependencies: Mapped[list[dict]] = mapped_column(JSON, default=list)
+    controls: Mapped[list[dict]] = mapped_column(JSON, default=list)
+    health_status: Mapped[str] = mapped_column(String(30), default="not_checked")
+    health_latency_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    last_checked_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
+
+class AuditEventRecord(Base):
+    __tablename__ = "audit_events"
+
+    event_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    asset_id: Mapped[str] = mapped_column(String(120), index=True)
+    version: Mapped[str] = mapped_column(String(80))
+    action: Mapped[str] = mapped_column(String(80))
+    actor_subject: Mapped[str] = mapped_column(String(180))
+    actor_email: Mapped[str] = mapped_column(String(240))
+    detail: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=utc_now,
     )
 
