@@ -1,0 +1,23 @@
+# Local hackathon reference material (not committed)
+/docs/use-case-statement.md
+
+# Downloaded, derived, and generated data
+/data/raw/
+/data/processed/
+/data/artifacts/
+/data/models/
+
+# Local runtime configuration and secrets
+.env
+.env.*
+!.env.example
+
+# Python and JavaScript build/runtime output
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+node_modules/
+dist/
+coverage/

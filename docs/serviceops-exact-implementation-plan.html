@@ -1,0 +1,558 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>ServiceOps AI Control Plane — Exact Implementation Plan</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #f5f7fb;
+      --surface: #ffffff;
+      --surface-2: #eef2f8;
+      --text: #172033;
+      --muted: #5f6b7a;
+      --line: #d6deea;
+      --brand: #165dff;
+      --brand-soft: #e8f0ff;
+      --green: #16825d;
+      --green-soft: #e5f7ef;
+      --amber: #a15c00;
+      --amber-soft: #fff2d8;
+      --red: #b42335;
+      --red-soft: #ffe8ec;
+      --purple: #7257d5;
+      --purple-soft: #f0edff;
+      --shadow: 0 10px 30px rgba(31, 47, 75, .08);
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0c111b;
+        --surface: #141c2a;
+        --surface-2: #1b2637;
+        --text: #edf3ff;
+        --muted: #aab7cb;
+        --line: #2f3d53;
+        --brand: #73a3ff;
+        --brand-soft: #182d54;
+        --green: #65d6ac;
+        --green-soft: #13372d;
+        --amber: #ffc363;
+        --amber-soft: #442f11;
+        --red: #ff8998;
+        --red-soft: #431b24;
+        --purple: #b5a5ff;
+        --purple-soft: #2c2550;
+        --shadow: 0 10px 30px rgba(0, 0, 0, .22);
+      }
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.5;
+    }
+    button, input { font: inherit; }
+    a { color: var(--brand); }
+    .shell { width: min(1500px, calc(100% - 32px)); margin: 0 auto; padding: 24px 0 64px; }
+    .hero {
+      display: grid;
+      grid-template-columns: minmax(0, 1.7fr) minmax(280px, .75fr);
+      gap: 18px;
+      align-items: stretch;
+      margin-bottom: 18px;
+    }
+    .hero-main, .decision, .panel, .stat, .agent, .tool, .stage, .profile, .milestone {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      box-shadow: var(--shadow);
+    }
+    .hero-main { padding: 28px; }
+    .eyebrow {
+      color: var(--brand);
+      font-size: .78rem;
+      font-weight: 700;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+    }
+    h1 { margin: 8px 0 10px; font-size: clamp(2rem, 4vw, 3.55rem); line-height: 1.03; letter-spacing: -.045em; }
+    h2 { margin: 0 0 6px; font-size: clamp(1.35rem, 2vw, 1.8rem); letter-spacing: -.025em; }
+    h3 { margin: 0 0 7px; font-size: 1rem; }
+    p { margin: 0; }
+    .lead { max-width: 900px; color: var(--muted); font-size: 1.04rem; }
+    .decision { padding: 22px; display: flex; flex-direction: column; justify-content: space-between; gap: 18px; }
+    .decision strong { font-size: 1.28rem; line-height: 1.2; }
+    .decision small, .muted { color: var(--muted); }
+    .chip-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: var(--surface-2);
+      border: 1px solid var(--line);
+      font-size: .82rem;
+      font-weight: 650;
+    }
+    .tabs {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      padding: 10px;
+      margin: 0 0 18px;
+      background: color-mix(in srgb, var(--bg) 88%, transparent);
+      backdrop-filter: blur(12px);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+    }
+    .tabs button {
+      border: 1px solid transparent;
+      background: transparent;
+      color: var(--muted);
+      border-radius: 10px;
+      padding: 9px 12px;
+      white-space: nowrap;
+      cursor: pointer;
+      font-weight: 650;
+    }
+    .tabs button[aria-selected="true"] { background: var(--brand); color: #fff; }
+    @media (prefers-color-scheme: dark) {
+      .tabs button[aria-selected="true"] { color: #09111f; }
+    }
+    .view[hidden] { display: none; }
+    .panel { padding: 22px; margin-bottom: 18px; }
+    .section-head { display: flex; gap: 12px; justify-content: space-between; align-items: end; margin-bottom: 16px; }
+    .section-head p { color: var(--muted); max-width: 760px; }
+    .stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+    .stat { padding: 16px; box-shadow: none; }
+    .stat .value { font-size: 1.8rem; font-weight: 760; letter-spacing: -.035em; }
+    .stat .label { color: var(--muted); font-size: .82rem; }
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(9, minmax(150px, 1fr));
+      gap: 30px;
+      overflow-x: auto;
+      padding: 4px 3px 16px;
+    }
+    .stage {
+      position: relative;
+      min-height: 185px;
+      padding: 15px;
+      box-shadow: none;
+    }
+    .stage:not(:last-child)::after {
+      content: "→";
+      position: absolute;
+      right: -23px;
+      top: 50%;
+      color: var(--brand);
+      font-size: 1.45rem;
+      font-weight: 800;
+    }
+    .stage .num {
+      display: inline-grid;
+      place-items: center;
+      width: 27px;
+      height: 27px;
+      border-radius: 50%;
+      background: var(--brand-soft);
+      color: var(--brand);
+      font-weight: 800;
+      margin-bottom: 10px;
+    }
+    .stage p { font-size: .83rem; color: var(--muted); }
+    .stage .owner { margin-top: 10px; padding-top: 9px; border-top: 1px solid var(--line); color: var(--text); font-size: .76rem; font-weight: 700; }
+    .split {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 16px;
+    }
+    .architecture {
+      display: grid;
+      gap: 10px;
+    }
+    .lane {
+      display: grid;
+      grid-template-columns: 180px minmax(0, 1fr);
+      gap: 12px;
+      align-items: stretch;
+    }
+    .lane-label {
+      display: grid;
+      align-content: center;
+      padding: 14px;
+      border-radius: 12px;
+      background: var(--brand-soft);
+      color: var(--brand);
+      font-weight: 800;
+    }
+    .lane-items {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(175px, 1fr));
+      gap: 8px;
+    }
+    .node {
+      padding: 12px;
+      background: var(--surface-2);
+      border: 1px solid var(--line);
+      border-radius: 11px;
+    }
+    .node strong { display: block; font-size: .88rem; }
+    .node small { display: block; color: var(--muted); margin-top: 3px; }
+    .callout {
+      padding: 14px 16px;
+      border-left: 4px solid var(--brand);
+      background: var(--brand-soft);
+      border-radius: 10px;
+    }
+    .callout.warning { border-color: var(--amber); background: var(--amber-soft); }
+    .callout.danger { border-color: var(--red); background: var(--red-soft); }
+    .agents, .tools, .profiles, .milestones {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(245px, 1fr));
+      gap: 12px;
+    }
+    .agent, .tool, .profile, .milestone { padding: 16px; box-shadow: none; }
+    .agent .skills, .tool .scope { color: var(--muted); font-size: .82rem; margin-top: 7px; }
+    .agent[data-tone="reason"] { border-top: 4px solid var(--purple); }
+    .agent[data-tone="control"] { border-top: 4px solid var(--amber); }
+    .agent[data-tone="action"] { border-top: 4px solid var(--red); }
+    .agent[data-tone="data"] { border-top: 4px solid var(--green); }
+    .protocol {
+      display: grid;
+      grid-template-columns: 1fr 78px 1fr;
+      align-items: center;
+      gap: 10px;
+      margin: 16px 0;
+    }
+    .protocol-box { padding: 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-2); }
+    .protocol-arrow { text-align: center; color: var(--brand); font-weight: 800; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { text-align: left; padding: 11px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+    th { color: var(--muted); font-size: .78rem; text-transform: uppercase; letter-spacing: .06em; }
+    td { font-size: .88rem; }
+    .table-wrap { overflow-x: auto; }
+    .bars { display: grid; gap: 10px; }
+    .bar-row { display: grid; grid-template-columns: 185px minmax(140px, 1fr) 70px; gap: 10px; align-items: center; font-size: .84rem; }
+    .track { height: 10px; background: var(--surface-2); border-radius: 99px; overflow: hidden; }
+    .fill { height: 100%; background: var(--brand); border-radius: inherit; }
+    .risk-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+    .risk { padding: 16px; border-radius: 13px; border: 1px solid var(--line); }
+    .risk.green { background: var(--green-soft); }
+    .risk.amber { background: var(--amber-soft); }
+    .risk.red { background: var(--red-soft); }
+    .risk strong { display: block; margin-bottom: 5px; }
+    .compare th:nth-child(2), .compare td:nth-child(2) { background: color-mix(in srgb, var(--red-soft) 65%, transparent); }
+    .compare th:nth-child(3), .compare td:nth-child(3) { background: color-mix(in srgb, var(--green-soft) 65%, transparent); }
+    .metric-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 10px; }
+    .metric { padding: 14px; background: var(--surface-2); border: 1px solid var(--line); border-radius: 11px; }
+    .metric strong { display: block; margin-bottom: 4px; }
+    .metric span { color: var(--muted); font-size: .83rem; }
+    .pipeline {
+      display: grid;
+      grid-template-columns: repeat(7, minmax(135px, 1fr));
+      gap: 24px;
+      overflow-x: auto;
+      padding-bottom: 8px;
+    }
+    .pipe-step { position: relative; padding: 13px; background: var(--surface-2); border: 1px solid var(--line); border-radius: 11px; min-height: 92px; font-size: .83rem; }
+    .pipe-step:not(:last-child)::after { content: "→"; position: absolute; right: -19px; top: 35%; color: var(--brand); font-weight: 800; }
+    .milestone .gate { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); color: var(--muted); font-size: .82rem; }
+    .milestone .index { color: var(--brand); font-weight: 800; }
+    .footer { color: var(--muted); font-size: .8rem; text-align: center; padding-top: 6px; }
+    @media (max-width: 900px) {
+      .hero, .split { grid-template-columns: 1fr; }
+      .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .lane { grid-template-columns: 1fr; }
+      .risk-grid { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 560px) {
+      .shell { width: min(100% - 18px, 1500px); padding-top: 10px; }
+      .hero-main, .decision, .panel { padding: 17px; border-radius: 13px; }
+      .stats { grid-template-columns: 1fr; }
+      .bar-row { grid-template-columns: 120px minmax(100px, 1fr) 55px; }
+      .section-head { align-items: start; flex-direction: column; }
+    }
+    @media print {
+      .tabs { display: none; }
+      .view[hidden] { display: block; }
+      body { background: white; color: #111; }
+      .panel, .hero-main, .decision { break-inside: avoid; box-shadow: none; }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <section class="hero">
+      <div class="hero-main">
+        <div class="eyebrow">Local-first enterprise blueprint</div>
+        <h1>Ticket-to-Verified-Resolution</h1>
+        <p class="lead">One closed-loop IT service workflow built around GLPI, FastAPI, LangGraph, A2A agents, governed MCP tools, classical ML, grounded local models and measured human outcomes.</p>
+        <div class="chip-row">
+          <span class="chip">React + TypeScript</span>
+          <span class="chip">FastAPI</span>
+          <span class="chip">GLPI</span>
+          <span class="chip">LangGraph</span>
+          <span class="chip">A2A 1.0</span>
+          <span class="chip">ContextForge MCP</span>
+          <span class="chip">OpenSearch</span>
+          <span class="chip">Keycloak</span>
+          <span class="chip">Langfuse</span>
+        </div>
+      </div>
+      <aside class="decision">
+        <div>
+          <div class="eyebrow">Architecture decision</div>
+          <strong>GLPI is the local system of record.</strong>
+        </div>
+        <small>Jira Free remains an optional cloud adapter. It cannot be the strict local default because its free plan is SaaS and self-managed Jira is commercial.</small>
+      </aside>
+    </section>
+
+    <nav class="tabs" aria-label="Blueprint sections">
+      <button type="button" aria-selected="true" data-view="workflow">Workflow</button>
+      <button type="button" aria-selected="false" data-view="architecture">Architecture</button>
+      <button type="button" aria-selected="false" data-view="agents">A2A + MCP</button>
+      <button type="button" aria-selected="false" data-view="data">Data</button>
+      <button type="button" aria-selected="false" data-view="evaluation">Before / after</button>
+      <button type="button" aria-selected="false" data-view="pipelines">Pipelines</button>
+      <button type="button" aria-selected="false" data-view="delivery">Delivery</button>
+    </nav>
+
+    <section class="view" id="view-workflow">
+      <div class="panel">
+        <div class="section-head">
+          <div><div class="eyebrow">Online path</div><h2>The exact ticket workflow</h2></div>
+          <p>Deterministic safety and cheap ML execute first. Agentic reasoning is used only where context, evidence or planning is needed.</p>
+        </div>
+        <div class="flow" aria-label="Nine-stage ticket workflow">
+          <article class="stage"><span class="num">1</span><h3>Intake</h3><p>React or GLPI creates a versioned TicketEnvelope with an idempotency key.</p><div class="owner">FastAPI · GLPI webhook</div></article>
+          <article class="stage"><span class="num">2</span><h3>Protect</h3><p>Validate schema, scan attachments, tokenize PII and apply emergency rules.</p><div class="owner">Deterministic services</div></article>
+          <article class="stage"><span class="num">3</span><h3>Triage</h3><p>Predict type, queue and priority; calibrate confidence and abstain when uncertain.</p><div class="owner">scikit-learn · LightGBM</div></article>
+          <article class="stage"><span class="num">4</span><h3>Context</h3><p>Retrieve only authorized requester, asset, history and service-health context.</p><div class="owner">Context Agent · MCP</div></article>
+          <article class="stage"><span class="num">5</span><h3>Evidence</h3><p>Hybrid retrieval, metadata filtering, reranking and citation verification.</p><div class="owner">OpenSearch · Retrieval Agent</div></article>
+          <article class="stage"><span class="num">6</span><h3>Reason</h3><p>Form a cited diagnosis, identify missing information and draft a resolution.</p><div class="owner">Diagnosis + Resolution Agents</div></article>
+          <article class="stage"><span class="num">7</span><h3>Gate</h3><p>Allow, require approval or deny based on identity, risk and intended action.</p><div class="owner">Governance Agent · policy</div></article>
+          <article class="stage"><span class="num">8</span><h3>Act</h3><p>Execute only an approved MCP tool; capture result, receipt and rollback reference.</p><div class="owner">Action Agent · ContextForge</div></article>
+          <article class="stage"><span class="num">9</span><h3>Learn</h3><p>Record final labels, edits and outcomes; feed only approved data into pipelines.</p><div class="owner">Dagster · MLflow · Langfuse</div></article>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="section-head"><div><div class="eyebrow">Human authority</div><h2>Action risk tiers</h2></div><p>The model can recommend broadly; execution authority stays narrow and explicit.</p></div>
+        <div class="risk-grid">
+          <article class="risk green"><strong>Green · low impact</strong><p>Read-only lookup, known FAQ, reversible action. Auto-draft is allowed; execution still passes policy.</p></article>
+          <article class="risk amber"><strong>Amber · approval required</strong><p>Account changes, uncertain diagnosis or customer-impacting updates require a named reviewer.</p></article>
+          <article class="risk red"><strong>Red · specialist handoff</strong><p>Security, privilege, destructive action and production change cannot execute autonomously.</p></article>
+        </div>
+      </div>
+    </section>
+
+    <section class="view" id="view-architecture" hidden>
+      <div class="panel">
+        <div class="section-head"><div><div class="eyebrow">Runtime topology</div><h2>Technology layers and boundaries</h2></div><p>Each boundary has one job: workflow, agent delegation, tool access, data, or control.</p></div>
+        <div class="architecture">
+          <div class="lane"><div class="lane-label">Experience</div><div class="lane-items"><div class="node"><strong>React portal</strong><small>Submission and status</small></div><div class="node"><strong>Operator console</strong><small>Evidence, approvals, edits</small></div><div class="node"><strong>Evaluation dashboard</strong><small>Before/after and drill-down</small></div></div></div>
+          <div class="lane"><div class="lane-label">Edge + identity</div><div class="lane-items"><div class="node"><strong>Traefik</strong><small>TLS and routing</small></div><div class="node"><strong>Keycloak</strong><small>OIDC, users, service identities</small></div><div class="node"><strong>FastAPI</strong><small>Authorization and API facade</small></div></div></div>
+          <div class="lane"><div class="lane-label">Workflow</div><div class="lane-items"><div class="node"><strong>LangGraph supervisor</strong><small>Durable graph and human interrupt</small></div><div class="node"><strong>PostgreSQL</strong><small>Checkpoints, outbox, audit</small></div><div class="node"><strong>Redis + Celery</strong><small>Cache and background work</small></div></div></div>
+          <div class="lane"><div class="lane-label">Agents</div><div class="lane-items"><div class="node"><strong>A2A services</strong><small>Cards, tasks and artifacts</small></div><div class="node"><strong>ContextForge</strong><small>Agent/tool registry and policy</small></div><div class="node"><strong>LiteLLM</strong><small>Local model routing and budgets</small></div></div></div>
+          <div class="lane"><div class="lane-label">Intelligence</div><div class="lane-items"><div class="node"><strong>Classical ML</strong><small>Fast triage and abstention</small></div><div class="node"><strong>OpenSearch</strong><small>BM25 + vector + filters</small></div><div class="node"><strong>Ollama / vLLM</strong><small>Local generation</small></div><div class="node"><strong>Sentence Transformers</strong><small>Embedding and reranking</small></div></div></div>
+          <div class="lane"><div class="lane-label">Systems of record</div><div class="lane-items"><div class="node"><strong>GLPI + MariaDB</strong><small>Tickets, SLA history and assets</small></div><div class="node"><strong>MinIO</strong><small>Snapshots and model artifacts</small></div><div class="node"><strong>Jira adapter</strong><small>Optional cloud demonstration</small></div></div></div>
+          <div class="lane"><div class="lane-label">Learning + evidence</div><div class="lane-items"><div class="node"><strong>Dagster</strong><small>Ingestion, replay, retraining</small></div><div class="node"><strong>MLflow</strong><small>Runs and model registry</small></div><div class="node"><strong>Langfuse</strong><small>LLM traces and evaluation</small></div><div class="node"><strong>OTel + Grafana stack</strong><small>Metrics, logs and traces</small></div></div></div>
+        </div>
+      </div>
+      <div class="split">
+        <div class="panel"><div class="eyebrow">Protocol boundary</div><h2>LangGraph ≠ A2A ≠ MCP</h2><div class="protocol"><div class="protocol-box"><strong>LangGraph</strong><br><span class="muted">decides the next workflow step</span></div><div class="protocol-arrow">→</div><div class="protocol-box"><strong>A2A</strong><br><span class="muted">delegates a task to another agent</span></div></div><div class="protocol"><div class="protocol-box"><strong>Agent</strong><br><span class="muted">needs data or an action</span></div><div class="protocol-arrow">→</div><div class="protocol-box"><strong>MCP</strong><br><span class="muted">invokes a governed tool</span></div></div></div>
+        <div class="panel"><div class="eyebrow">Local-first reality</div><h2>What “local” means</h2><div class="callout warning"><strong>Jira Free is not local.</strong><br>Strict-local mode uses GLPI. Jira Cloud Free is optional and cannot be used to claim an air-gapped deployment.</div><div class="callout" style="margin-top:12px"><strong>Local AI still has cost.</strong><br>GPU/CPU time, energy, storage and operations are measured per ticket.</div></div>
+      </div>
+    </section>
+
+    <section class="view" id="view-agents" hidden>
+      <div class="panel">
+        <div class="section-head"><div><div class="eyebrow">A2A services</div><h2>Agent cards and responsibilities</h2></div><p>Agents expose typed skills and return artifacts. They do not receive unrestricted database or tool access.</p></div>
+        <div class="agents">
+          <article class="agent" data-tone="data"><h3>Triage Agent</h3><p>Wraps calibrated ML and deterministic rules.</p><div class="skills">classify_ticket · estimate_priority · explain_abstention</div></article>
+          <article class="agent" data-tone="data"><h3>Context Agent</h3><p>Builds the smallest authorized operational context.</p><div class="skills">requester_context · asset_context · ticket_history</div></article>
+          <article class="agent" data-tone="data"><h3>Retrieval Agent</h3><p>Finds, reranks and verifies approved evidence.</p><div class="skills">search_knowledge · similar_resolutions · verify_citations</div></article>
+          <article class="agent" data-tone="reason"><h3>Diagnosis Agent</h3><p>Forms hypotheses and identifies missing information.</p><div class="skills">form_hypotheses · select_runbook · ask_clarification</div></article>
+          <article class="agent" data-tone="reason"><h3>Resolution Agent</h3><p>Creates cited user and operator responses.</p><div class="skills">draft_response · resolution_plan · summarize</div></article>
+          <article class="agent" data-tone="control"><h3>Governance Agent</h3><p>Combines policy results into an execution decision.</p><div class="skills">assess_risk · check_policy · require_approval</div></article>
+          <article class="agent" data-tone="action"><h3>Action Agent</h3><p>Executes only signed, approved tool calls.</p><div class="skills">dry_run · execute · verify · rollback</div></article>
+          <article class="agent" data-tone="control"><h3>Evaluation Agent</h3><p>Scores offline traces and compares variants.</p><div class="skills">score_trace · compare_variants · failure_clusters</div></article>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="section-head"><div><div class="eyebrow">Unified MCP gateway</div><h2>Tool servers and scopes</h2></div><p>ContextForge is the only path from agents to operational tools.</p></div>
+        <div class="tools">
+          <article class="tool"><h3>glpi-mcp</h3><p>Tickets, notes, assignment, priority and resolution.</p><div class="scope">Read default · writes approval-bound</div></article>
+          <article class="tool"><h3>knowledge-mcp</h3><p>Hybrid search and immutable cited chunks.</p><div class="scope">Read-only · tenant-filtered</div></article>
+          <article class="tool"><h3>cmdb-mcp</h3><p>Asset dependencies and business criticality.</p><div class="scope">Read-only · minimum fields</div></article>
+          <article class="tool"><h3>identity-mcp</h3><p>Requester group and role claims.</p><div class="scope">Read-only · no credential material</div></article>
+          <article class="tool"><h3>telemetry-mcp</h3><p>Health, metrics and recent alert context.</p><div class="scope">Read-only · bounded queries</div></article>
+          <article class="tool"><h3>runbook-mcp</h3><p>Dry-run, allowlisted execution, verify and rollback.</p><div class="scope">Signed approval required</div></article>
+        </div>
+      </div>
+    </section>
+
+    <section class="view" id="view-data" hidden>
+      <div class="panel">
+        <div class="section-head"><div><div class="eyebrow">Downloaded locally</div><h2>Dataset fitness, not just row count</h2></div><p>Two public corpora cover complementary tasks. Neither can prove business impact by itself.</p></div>
+        <div class="stats">
+          <article class="stat"><div class="value">47,837</div><div class="label">CC0 categorized IT tickets</div></article>
+          <article class="stat"><div class="value">28,587</div><div class="label">rich multilingual tickets downloaded</div></article>
+          <article class="stat"><div class="value">16,338</div><div class="label">English rich tickets</div></article>
+          <article class="stat"><div class="value">10,416</div><div class="label">selected English IT subset</div></article>
+        </div>
+      </div>
+      <div class="split">
+        <div class="panel">
+          <div class="eyebrow">CC0 routing corpus</div><h2>Eight topic groups</h2>
+          <div class="bars">
+            <div class="bar-row"><span>Hardware</span><div class="track"><div class="fill" style="width:100%"></div></div><strong>13,617</strong></div>
+            <div class="bar-row"><span>HR Support</span><div class="track"><div class="fill" style="width:80.2%"></div></div><strong>10,915</strong></div>
+            <div class="bar-row"><span>Access</span><div class="track"><div class="fill" style="width:52.3%"></div></div><strong>7,125</strong></div>
+            <div class="bar-row"><span>Miscellaneous</span><div class="track"><div class="fill" style="width:51.8%"></div></div><strong>7,060</strong></div>
+            <div class="bar-row"><span>Storage</span><div class="track"><div class="fill" style="width:20.4%"></div></div><strong>2,777</strong></div>
+            <div class="bar-row"><span>Purchase</span><div class="track"><div class="fill" style="width:18.1%"></div></div><strong>2,464</strong></div>
+            <div class="bar-row"><span>Internal Project</span><div class="track"><div class="fill" style="width:15.6%"></div></div><strong>2,119</strong></div>
+            <div class="bar-row"><span>Admin rights</span><div class="track"><div class="fill" style="width:12.9%"></div></div><strong>1,760</strong></div>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="eyebrow">Rich English IT subset</div><h2>What it enables</h2>
+          <div class="table-wrap"><table><thead><tr><th>Field</th><th>Coverage</th><th>Use</th></tr></thead><tbody>
+            <tr><td>Subject + body</td><td>Body complete; 2,607 missing subjects in all English data</td><td>Triage and retrieval queries</td></tr>
+            <tr><td>Queue</td><td>4 selected IT queues</td><td>Routing model</td></tr>
+            <tr><td>Type</td><td>Incident, problem, request, change</td><td>Workflow branching</td></tr>
+            <tr><td>Priority</td><td>High, medium, low</td><td>Priority benchmark</td></tr>
+            <tr><td>Answer</td><td>Only 3 missing in all English data</td><td>Held-out response reference</td></tr>
+            <tr><td>Tags</td><td>Security, outage, network, bug and more</td><td>Slices and metadata</td></tr>
+          </tbody></table></div>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="callout danger"><strong>Commercial limitation:</strong> the rich ticket corpus is CC BY-NC 4.0 and synthetic. It is suitable for this non-commercial hackathon benchmark, not for a shipped commercial model.</div>
+        <div class="callout warning" style="margin-top:12px"><strong>Missing lifecycle truth:</strong> public data has no real handling time, SLA, human edits, approvals, reopen events, CSAT, tool calls or infrastructure cost. Those fields must come from the running GLPI pilot.</div>
+      </div>
+      <div class="panel">
+        <div class="section-head"><div><div class="eyebrow">Leakage control</div><h2>How the benchmark stays honest</h2></div></div>
+        <div class="metric-grid">
+          <div class="metric"><strong>Grouped splits</strong><span>Split synthetic data by generation version, not random rows.</span></div>
+          <div class="metric"><strong>Answers withheld</strong><span>Never put test answers into the OpenSearch knowledge index.</span></div>
+          <div class="metric"><strong>Frozen golden set</strong><span>Balance 300 manually reviewed tickets across queue, type and priority.</span></div>
+          <div class="metric"><strong>Immutable lineage</strong><span>Record source hashes, transformations, seed and model version in MLflow.</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="view" id="view-evaluation" hidden>
+      <div class="panel">
+        <div class="section-head"><div><div class="eyebrow">Credible comparison</div><h2>Before is an executable baseline</h2></div><p>Both variants replay the same frozen tickets on the same hardware. No fictional historical savings.</p></div>
+        <div class="table-wrap"><table class="compare"><thead><tr><th>Dimension</th><th>Before baseline</th><th>Optimized workflow</th></tr></thead><tbody>
+          <tr><td>Routing</td><td>Majority / keyword rules and a TF-IDF benchmark</td><td>Calibrated ML, metadata, abstention and human fallback</td></tr>
+          <tr><td>Retrieval</td><td>BM25 top-5</td><td>Hybrid search, tenant filters and cross-encoder reranking</td></tr>
+          <tr><td>Response</td><td>One local model, fixed prompt, no evidence</td><td>Evidence-limited RAG, citations, routing and semantic cache</td></tr>
+          <tr><td>Governance</td><td>Static forbidden-word checks</td><td>Identity scopes, policy engine, risk tiers and signed approvals</td></tr>
+          <tr><td>Tool use</td><td>No execution</td><td>Allowlisted MCP tools with dry-run, receipt and rollback</td></tr>
+          <tr><td>Observability</td><td>Request log and stopwatch</td><td>Langfuse plus correlated OpenTelemetry</td></tr>
+        </tbody></table></div>
+      </div>
+      <div class="panel">
+        <div class="section-head"><div><div class="eyebrow">Release gates</div><h2>Metrics that decide promotion</h2></div></div>
+        <div class="metric-grid">
+          <div class="metric"><strong>Classical ML</strong><span>Macro-F1, balanced accuracy, per-class recall, calibration and selective coverage.</span></div>
+          <div class="metric"><strong>Retrieval</strong><span>Recall@5, MRR@10, nDCG@10 and citation precision.</span></div>
+          <div class="metric"><strong>Generation</strong><span>Groundedness, unsupported claims, citation correctness, acceptance and edit distance.</span></div>
+          <div class="metric"><strong>Safety</strong><span>PII leakage, blocked unauthorized calls, unsafe actions and audit completeness.</span></div>
+          <div class="metric"><strong>Operations</strong><span>p50/p95 latency, model calls, cache hits, CPU/GPU seconds, energy and retries.</span></div>
+          <div class="metric"><strong>Business pilot</strong><span>Human minutes, response time, MTTR, FCR, reopen, SLA and CSAT from GLPI events.</span></div>
+        </div>
+      </div>
+      <div class="split">
+        <div class="panel"><div class="eyebrow">Cost equation</div><h2>Local inference is measured</h2><div class="callout"><code>GPU seconds × amortization + CPU seconds × amortization + energy + storage/ops</code></div><p class="muted" style="margin-top:12px">Report resource units beside currency assumptions so the result remains auditable.</p></div>
+        <div class="panel"><div class="eyebrow">Optimization levers</div><h2>What actually lowers cost</h2><div class="chip-row"><span class="chip">ML fast path</span><span class="chip">Model routing</span><span class="chip">Semantic cache</span><span class="chip">Prompt reduction</span><span class="chip">Top-k tuning</span><span class="chip">Batch embeddings</span><span class="chip">Quantization</span><span class="chip">Early exit</span></div></div>
+      </div>
+    </section>
+
+    <section class="view" id="view-pipelines" hidden>
+      <div class="panel">
+        <div class="section-head"><div><div class="eyebrow">Dagster asset pipeline</div><h2>Knowledge ingestion</h2></div><p>Production index promotion occurs only after retrieval evaluation and approval.</p></div>
+        <div class="pipeline">
+          <div class="pipe-step"><strong>Snapshot</strong><br><span class="muted">Version source and hash</span></div>
+          <div class="pipe-step"><strong>Protect</strong><br><span class="muted">Malware and PII scan</span></div>
+          <div class="pipe-step"><strong>Parse</strong><br><span class="muted">Normalize and chunk</span></div>
+          <div class="pipe-step"><strong>Enrich</strong><br><span class="muted">Tenant, ACL, validity</span></div>
+          <div class="pipe-step"><strong>Embed</strong><br><span class="muted">Local batched model</span></div>
+          <div class="pipe-step"><strong>Evaluate</strong><br><span class="muted">Shadow index replay</span></div>
+          <div class="pipe-step"><strong>Promote</strong><br><span class="muted">Atomic alias switch</span></div>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="section-head"><div><div class="eyebrow">Champion / candidate</div><h2>Classical ML retraining</h2></div><p>At least 200 newly approved labels plus a schedule or validated drift signal.</p></div>
+        <div class="pipeline">
+          <div class="pipe-step"><strong>Labels</strong><br><span class="muted">Resolved and accepted only</span></div>
+          <div class="pipe-step"><strong>Features</strong><br><span class="muted">Point-in-time correct</span></div>
+          <div class="pipe-step"><strong>Split</strong><br><span class="muted">Grouped and frozen</span></div>
+          <div class="pipe-step"><strong>Train</strong><br><span class="muted">Class weights + calibration</span></div>
+          <div class="pipe-step"><strong>Test</strong><br><span class="muted">Gates and error slices</span></div>
+          <div class="pipe-step"><strong>Canary</strong><br><span class="muted">Shadow then limited traffic</span></div>
+          <div class="pipe-step"><strong>Promote</strong><br><span class="muted">MLflow alias + rollback</span></div>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="callout warning"><strong>No automatic truth:</strong> a human edit is feedback, not a final label. It becomes trainable only after resolution acceptance and data-quality validation.</div>
+      </div>
+    </section>
+
+    <section class="view" id="view-delivery" hidden>
+      <div class="panel">
+        <div class="section-head"><div><div class="eyebrow">Compose profiles</div><h2>Local without forcing every service on</h2></div><p>Profiles keep the stack reproducible while allowing smaller development footprints.</p></div>
+        <div class="profiles">
+          <article class="profile"><h3>core</h3><p>React, FastAPI, PostgreSQL, Redis, agents, ContextForge, Keycloak, OpenSearch, LiteLLM and Ollama.</p></article>
+          <article class="profile"><h3>itsm</h3><p>GLPI Community and MariaDB as the local ticket and asset system.</p></article>
+          <article class="profile"><h3>mlops</h3><p>Dagster, MLflow and MinIO for lineage, pipelines and model artefacts.</p></article>
+          <article class="profile"><h3>observability</h3><p>Langfuse, OTel Collector, Prometheus, Grafana, Loki and Tempo.</p></article>
+          <article class="profile"><h3>gpu</h3><p>vLLM plus local embedding and reranking services for deployment hardware.</p></article>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="section-head"><div><div class="eyebrow">Branch milestones</div><h2>Merge only when the gate passes</h2></div></div>
+        <div class="milestones">
+          <article class="milestone"><span class="index">01</span><h3>Data + contracts</h3><p>Splits, schemas, cards and baseline profiler.</p><div class="gate">Gate: checksums, leakage and validation</div></article>
+          <article class="milestone"><span class="index">02</span><h3>Deterministic path</h3><p>React → FastAPI → GLPI, identity and audit.</p><div class="gate">Gate: idempotency and RBAC tests</div></article>
+          <article class="milestone"><span class="index">03</span><h3>ML triage</h3><p>Queue, type, priority and abstention.</p><div class="gate">Gate: reproducible MLflow thresholds</div></article>
+          <article class="milestone"><span class="index">04</span><h3>Grounded recommendation</h3><p>Hybrid retrieval and cited response drafts.</p><div class="gate">Gate: beats frozen baseline</div></article>
+          <article class="milestone"><span class="index">05</span><h3>A2A + MCP</h3><p>Agent cards, gateway and read-only tools.</p><div class="gate">Gate: auth, isolation and trace tests</div></article>
+          <article class="milestone"><span class="index">06</span><h3>Approved action</h3><p>Risk gate, human approval and rollback.</p><div class="gate">Gate: no unsigned write can execute</div></article>
+          <article class="milestone"><span class="index">07</span><h3>Closed-loop learning</h3><p>Ingestion, retraining and promotion.</p><div class="gate">Gate: no leakage; rollback works</div></article>
+          <article class="milestone"><span class="index">08</span><h3>Enterprise demo</h3><p>Observability, failure injection and dashboard.</p><div class="gate">Gate: restore, security and before/after pass</div></article>
+        </div>
+      </div>
+    </section>
+
+    <p class="footer">ServiceOps AI Control Plane · exact blueprint · local artefact</p>
+  </main>
+  <script>
+    const buttons = Array.from(document.querySelectorAll("[data-view]"));
+    const views = Array.from(document.querySelectorAll(".view"));
+    function showView(name) {
+      buttons.forEach((button) => button.setAttribute("aria-selected", String(button.dataset.view === name)));
+      views.forEach((view) => { view.hidden = view.id !== `view-${name}`; });
+      history.replaceState(null, "", `#${name}`);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+    buttons.forEach((button) => button.addEventListener("click", () => showView(button.dataset.view)));
+    const initial = location.hash.slice(1);
+    if (buttons.some((button) => button.dataset.view === initial)) showView(initial);
+  </script>
+</body>
+</html>

@@ -1,0 +1,932 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <meta name="color-scheme" content="light">
+  <title>Northstar — Local AI Control Tower</title>
+  <style>
+    :root {
+      --ink: #18241f;
+      --muted: #67716c;
+      --canvas: #f3f3ed;
+      --paper: #fffefa;
+      --paper-2: #f8f8f3;
+      --line: #dfe1d8;
+      --nav: #10221b;
+      --nav-2: #183228;
+      --accent: #b8f35a;
+      --accent-dark: #315c14;
+      --blue: #3168e0;
+      --blue-soft: #eaf0ff;
+      --green: #167653;
+      --green-soft: #e4f5ed;
+      --amber: #a86313;
+      --amber-soft: #fff0d5;
+      --red: #bd3b44;
+      --red-soft: #ffeaeb;
+      --purple: #7051c9;
+      --purple-soft: #f0ebff;
+      --shadow: 0 18px 50px rgba(27, 43, 35, .08);
+      --shadow-sm: 0 5px 18px rgba(27, 43, 35, .06);
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      min-width: 320px;
+      background: var(--canvas);
+      color: var(--ink);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.45;
+    }
+    button, input, select { font: inherit; }
+    button { color: inherit; }
+    a { color: inherit; }
+    .app { min-height: 100vh; display: grid; grid-template-columns: 250px minmax(0, 1fr); }
+    .sidebar {
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      padding: 22px 15px 16px;
+      background: var(--nav);
+      color: #ecf6f0;
+    }
+    .brand { display: flex; align-items: center; gap: 11px; padding: 2px 8px 24px; }
+    .brand-mark {
+      width: 36px;
+      height: 36px;
+      display: grid;
+      place-items: center;
+      border-radius: 11px;
+      background: var(--accent);
+      color: var(--nav);
+      font-size: .82rem;
+      font-weight: 900;
+      letter-spacing: -.03em;
+      box-shadow: inset 0 -5px 12px rgba(37, 73, 16, .14);
+    }
+    .brand strong { display: block; font-size: .98rem; letter-spacing: -.02em; }
+    .brand small { display: block; margin-top: 2px; color: #95a99f; font-size: .69rem; letter-spacing: .06em; text-transform: uppercase; }
+    .nav-label { padding: 0 12px 8px; color: #71877c; font-size: .66rem; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
+    .nav { display: grid; gap: 4px; }
+    .nav button {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      gap: 11px;
+      border: 0;
+      border-radius: 10px;
+      padding: 10px 12px;
+      background: transparent;
+      color: #9fb3a9;
+      cursor: pointer;
+      text-align: left;
+      font-size: .86rem;
+      transition: .18s ease;
+    }
+    .nav button:hover { color: #fff; background: rgba(255, 255, 255, .05); }
+    .nav button[aria-selected="true"] { color: #fff; background: var(--nav-2); box-shadow: inset 3px 0 0 var(--accent); }
+    .nav-icon {
+      width: 25px;
+      height: 25px;
+      display: grid;
+      place-items: center;
+      border: 1px solid #395046;
+      border-radius: 7px;
+      font-size: .64rem;
+      font-weight: 800;
+    }
+    .nav button[aria-selected="true"] .nav-icon { border-color: var(--accent); color: var(--accent); }
+    .nav-group { display: grid; gap: 3px; }
+    .subnav {
+      display: grid;
+      gap: 2px;
+      margin: -1px 0 5px 37px;
+      padding: 5px 0 5px 11px;
+      border-left: 1px solid #314a3f;
+    }
+    .subnav button {
+      min-height: 27px;
+      padding: 5px 8px;
+      border-radius: 7px;
+      color: #81978c;
+      font-size: .69rem;
+    }
+    .subnav button[aria-current="true"] { color: var(--accent); background: rgba(184, 243, 90, .07); }
+    .nav-count {
+      min-width: 20px;
+      margin-left: auto;
+      padding: 2px 6px;
+      border-radius: 999px;
+      background: #2c463a;
+      color: #d8e6df;
+      font-size: .65rem;
+      text-align: center;
+    }
+    .nav-count.alert { background: #7b2c33; color: #fff; }
+    .side-bottom { margin-top: auto; padding-top: 18px; }
+    .provider-card { padding: 13px; border: 1px solid #314b3f; border-radius: 11px; background: #142b22; }
+    .provider-card .line { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .provider-card strong { font-size: .78rem; }
+    .provider-card p { margin: 7px 0 11px; color: #91a69b; font-size: .68rem; }
+    .provider-card button { width: 100%; border: 1px solid #466357; border-radius: 8px; padding: 7px 8px; background: transparent; color: #d5e3dc; cursor: pointer; font-size: .7rem; font-weight: 700; }
+    .status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--amber); box-shadow: 0 0 0 3px rgba(201, 130, 35, .14); }
+    .main { min-width: 0; }
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 30;
+      height: 68px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 0 28px;
+      background: rgba(243, 243, 237, .9);
+      border-bottom: 1px solid rgba(210, 214, 204, .8);
+      backdrop-filter: blur(15px);
+    }
+    .menu-button { display: none; border: 0; background: transparent; font-size: 1.2rem; cursor: pointer; }
+    .workspace-switcher { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: .77rem; }
+    .workspace-switcher strong { color: var(--ink); }
+    .environment { padding: 5px 8px; border: 1px solid #cfd3c8; border-radius: 7px; background: var(--paper); color: var(--green); font-size: .68rem; font-weight: 800; text-transform: uppercase; }
+    .top-actions { display: flex; align-items: center; gap: 9px; margin-left: auto; }
+    .search {
+      width: clamp(170px, 22vw, 320px);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 11px;
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      background: var(--paper);
+    }
+    .search span { color: #8a938e; font-size: .8rem; }
+    .search input { width: 100%; border: 0; outline: 0; background: transparent; color: var(--ink); font-size: .77rem; }
+    .avatar { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 50%; background: var(--nav); color: #fff; font-size: .7rem; font-weight: 800; }
+    .content { width: min(1580px, 100%); margin: 0 auto; padding: 27px 28px 56px; }
+    .view[hidden] { display: none; }
+    .reference-only { display: none !important; }
+    .page-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 22px; margin-bottom: 22px; }
+    .eyebrow { margin-bottom: 7px; color: var(--green); font-size: .69rem; font-weight: 850; letter-spacing: .13em; text-transform: uppercase; }
+    h1, h2, h3, p { margin-top: 0; }
+    h1 { margin-bottom: 7px; font-size: clamp(1.85rem, 3vw, 2.65rem); line-height: 1.07; letter-spacing: -.045em; }
+    h2 { margin-bottom: 4px; font-size: 1.07rem; letter-spacing: -.02em; }
+    h3 { margin-bottom: 6px; font-size: .87rem; }
+    .page-head p, .section-head p { margin-bottom: 0; color: var(--muted); font-size: .81rem; }
+    .head-actions { display: flex; gap: 9px; flex-wrap: wrap; }
+    .button {
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      padding: 9px 13px;
+      background: var(--paper);
+      cursor: pointer;
+      font-size: .75rem;
+      font-weight: 760;
+      box-shadow: 0 1px 2px rgba(0,0,0,.02);
+    }
+    .button:hover { border-color: #b5bbb0; }
+    .button.primary { border-color: var(--nav); background: var(--nav); color: #fff; }
+    .button.accent { border-color: var(--accent); background: var(--accent); color: var(--nav); }
+    .button.danger { border-color: #efc4c7; color: var(--red); background: var(--red-soft); }
+    .button.small { padding: 6px 9px; font-size: .67rem; }
+    .grid { display: grid; gap: 14px; }
+    .stats { grid-template-columns: repeat(5, minmax(0, 1fr)); margin-bottom: 14px; }
+    .stat, .panel {
+      border: 1px solid var(--line);
+      background: var(--paper);
+      border-radius: 13px;
+      box-shadow: var(--shadow-sm);
+    }
+    .stat { min-height: 127px; padding: 16px; position: relative; overflow: hidden; }
+    .stat::after { content: ""; position: absolute; inset: auto -30px -45px auto; width: 95px; height: 95px; border-radius: 50%; background: var(--paper-2); }
+    .stat-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; color: var(--muted); font-size: .68rem; font-weight: 700; }
+    .stat-icon { width: 27px; height: 27px; display: grid; place-items: center; border-radius: 8px; background: var(--green-soft); color: var(--green); font-size: .64rem; font-weight: 900; }
+    .stat-value { position: relative; z-index: 1; margin: 13px 0 4px; font-size: 1.72rem; font-weight: 790; letter-spacing: -.045em; }
+    .stat-note { position: relative; z-index: 1; color: var(--muted); font-size: .68rem; }
+    .trend-up { color: var(--green); font-weight: 750; }
+    .trend-down { color: var(--red); font-weight: 750; }
+    .overview-grid { grid-template-columns: minmax(0, 1.35fr) minmax(310px, .65fr); }
+    .panel { min-width: 0; padding: 18px; }
+    .panel.flush { padding: 0; overflow: hidden; }
+    .section-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 14px; margin-bottom: 15px; }
+    .section-head a { color: var(--green); font-size: .68rem; font-weight: 800; text-decoration: none; }
+    .health-chart { height: 200px; display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: 9px; }
+    .axis-y { display: flex; flex-direction: column; justify-content: space-between; padding: 3px 0 26px; color: #969e99; font-size: .6rem; text-align: right; }
+    .plot {
+      position: relative;
+      display: flex;
+      align-items: end;
+      justify-content: space-around;
+      gap: 8px;
+      padding: 10px 8px 26px;
+      border-left: 1px solid var(--line);
+      border-bottom: 1px solid var(--line);
+      background: repeating-linear-gradient(to bottom, transparent 0, transparent 42px, #edf0e9 43px);
+    }
+    .bar-group { height: 100%; flex: 1; display: flex; align-items: end; justify-content: center; gap: 3px; position: relative; }
+    .bar { width: min(15px, 38%); min-height: 4px; border-radius: 4px 4px 1px 1px; background: var(--nav); }
+    .bar.secondary { background: var(--accent); }
+    .bar-label { position: absolute; top: calc(100% + 7px); color: #7d8781; font-size: .58rem; }
+    .legend { display: flex; gap: 13px; margin-top: 8px; color: var(--muted); font-size: .64rem; }
+    .legend i { width: 8px; height: 8px; display: inline-block; border-radius: 2px; margin-right: 5px; background: var(--nav); }
+    .legend .second i { background: var(--accent); }
+    .decision-list { display: grid; gap: 8px; }
+    .decision-item { padding: 11px; border: 1px solid var(--line); border-radius: 9px; background: var(--paper-2); }
+    .decision-item .row, .row { display: flex; align-items: center; gap: 8px; }
+    .decision-item strong { font-size: .76rem; }
+    .decision-item p { margin: 4px 0 8px; color: var(--muted); font-size: .66rem; }
+    .decision-meta { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: .61rem; color: var(--muted); }
+    .badge { display: inline-flex; align-items: center; gap: 5px; padding: 3px 7px; border-radius: 999px; font-size: .61rem; font-weight: 800; white-space: nowrap; }
+    .badge.green { color: var(--green); background: var(--green-soft); }
+    .badge.amber { color: var(--amber); background: var(--amber-soft); }
+    .badge.red { color: var(--red); background: var(--red-soft); }
+    .badge.blue { color: var(--blue); background: var(--blue-soft); }
+    .badge.purple { color: var(--purple); background: var(--purple-soft); }
+    .badge.gray { color: #606963; background: #eceee8; }
+    .dot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+    .portfolio { margin-top: 14px; grid-template-columns: minmax(0, .8fr) minmax(0, 1.2fr); }
+    .donut-wrap { min-height: 220px; display: grid; grid-template-columns: 170px minmax(0, 1fr); place-items: center; gap: 10px; }
+    .donut {
+      width: 150px;
+      height: 150px;
+      display: grid;
+      place-items: center;
+      border-radius: 50%;
+      background: conic-gradient(var(--green) 0 46%, var(--amber) 46% 71%, var(--red) 71% 82%, #d8ddd5 82% 100%);
+      position: relative;
+    }
+    .donut::after { content: ""; width: 100px; height: 100px; border-radius: 50%; background: var(--paper); position: absolute; }
+    .donut-center { position: relative; z-index: 1; text-align: center; }
+    .donut-center strong { display: block; font-size: 1.55rem; letter-spacing: -.04em; }
+    .donut-center span { color: var(--muted); font-size: .61rem; }
+    .risk-list { width: 100%; display: grid; gap: 9px; }
+    .risk-row { display: grid; grid-template-columns: 70px minmax(0, 1fr) 22px; gap: 9px; align-items: center; color: var(--muted); font-size: .66rem; }
+    .risk-track { height: 7px; overflow: hidden; border-radius: 999px; background: #e9ebe5; }
+    .risk-fill { height: 100%; border-radius: inherit; background: var(--green); }
+    .event-list { display: grid; }
+    .event { display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; gap: 10px; align-items: start; padding: 12px 0; border-bottom: 1px solid #ebede7; }
+    .event:last-child { border-bottom: 0; }
+    .event-icon { width: 29px; height: 29px; display: grid; place-items: center; border-radius: 8px; background: var(--paper-2); color: var(--green); font-size: .59rem; font-weight: 900; }
+    .event strong { display: block; font-size: .72rem; }
+    .event p { margin: 3px 0 0; color: var(--muted); font-size: .63rem; }
+    .event time { color: #929a95; font-size: .59rem; }
+    .toolbar { display: flex; align-items: center; gap: 8px; padding: 14px 16px; border-bottom: 1px solid var(--line); background: var(--paper-2); }
+    .toolbar .filter { min-width: 130px; border: 1px solid var(--line); border-radius: 8px; padding: 7px 9px; background: var(--paper); color: var(--ink); font-size: .7rem; }
+    .toolbar .grow { flex: 1; }
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; }
+    th { padding: 10px 14px; background: #fbfbf7; border-bottom: 1px solid var(--line); color: #7a847e; font-size: .61rem; letter-spacing: .06em; text-align: left; text-transform: uppercase; white-space: nowrap; }
+    td { padding: 12px 14px; border-bottom: 1px solid #ebede7; font-size: .7rem; vertical-align: middle; }
+    tr:last-child td { border-bottom: 0; }
+    tbody tr { transition: background .15s; }
+    tbody tr:hover { background: #fbfcf8; }
+    .asset-name { display: flex; align-items: center; gap: 9px; min-width: 190px; }
+    .asset-symbol { width: 30px; height: 30px; display: grid; place-items: center; border-radius: 8px; background: var(--blue-soft); color: var(--blue); font-size: .6rem; font-weight: 900; }
+    .asset-name strong { display: block; font-size: .72rem; }
+    .asset-name small { color: var(--muted); font-size: .59rem; }
+    .owner { display: flex; align-items: center; gap: 6px; }
+    .owner-dot { width: 20px; height: 20px; display: grid; place-items: center; border-radius: 50%; background: var(--nav); color: #fff; font-size: .52rem; font-weight: 800; }
+    .lifecycle-board { display: grid; grid-template-columns: repeat(5, minmax(200px, 1fr)); gap: 10px; overflow-x: auto; padding-bottom: 7px; }
+    .stage { min-width: 200px; padding: 11px; border-radius: 11px; background: var(--paper-2); border: 1px solid var(--line); }
+    .stage-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 10px; }
+    .stage-head strong { font-size: .7rem; }
+    .stage-head span { color: var(--muted); font-size: .62rem; }
+    .asset-card { margin-bottom: 8px; padding: 11px; border: 1px solid var(--line); border-radius: 9px; background: var(--paper); box-shadow: 0 2px 8px rgba(32,45,38,.04); }
+    .asset-card:last-child { margin-bottom: 0; }
+    .asset-card strong { display: block; font-size: .7rem; }
+    .asset-card p { margin: 4px 0 9px; color: var(--muted); font-size: .61rem; }
+    .asset-card footer { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+    .gate-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    .gate { padding: 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--paper-2); }
+    .gate-num { width: 24px; height: 24px; display: grid; place-items: center; margin-bottom: 10px; border-radius: 7px; background: var(--nav); color: var(--accent); font-size: .62rem; font-weight: 900; }
+    .gate p { margin: 0; color: var(--muted); font-size: .63rem; }
+    .trace-layout { grid-template-columns: minmax(0, 1.4fr) minmax(290px, .6fr); }
+    .trace { display: grid; grid-template-columns: 78px minmax(0, 1fr) 64px; gap: 10px; align-items: center; padding: 9px 0; border-bottom: 1px solid #ebede7; }
+    .trace:last-child { border-bottom: 0; }
+    .trace-name { font-size: .64rem; font-weight: 750; }
+    .trace-track { height: 18px; position: relative; border-radius: 5px; background: #f0f1ed; }
+    .trace-span { height: 100%; border-radius: 5px; background: var(--blue); opacity: .86; }
+    .trace-span.green { background: var(--green); }
+    .trace-span.amber { background: var(--amber); }
+    .trace-time { color: var(--muted); font-size: .61rem; text-align: right; }
+    .definition-note {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 1px;
+      overflow: hidden;
+      margin-bottom: 14px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--line);
+    }
+    .definition-card { padding: 16px; background: var(--paper); }
+    .definition-card strong { display: block; margin-bottom: 5px; font-size: .76rem; }
+    .definition-card p { margin: 0; color: var(--muted); font-size: .66rem; }
+    .definition-card .path { display: block; margin-top: 8px; color: var(--green); font-size: .61rem; font-weight: 750; }
+    .run-status-tabs { display: flex; gap: 6px; flex-wrap: wrap; }
+    .run-status-tabs button {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 6px 9px;
+      background: var(--paper);
+      color: var(--muted);
+      cursor: pointer;
+      font-size: .65rem;
+      font-weight: 750;
+    }
+    .run-status-tabs button[aria-selected="true"] { border-color: var(--nav); background: var(--nav); color: #fff; }
+    .run-name { min-width: 210px; }
+    .run-name strong { display: block; font-size: .72rem; }
+    .run-name small { color: var(--muted); font-size: .59rem; }
+    .stage-progress { min-width: 230px; }
+    .stage-progress strong { display: block; margin-bottom: 6px; font-size: .66rem; }
+    .stage-dots { display: flex; align-items: center; gap: 3px; }
+    .stage-dots i { width: 22px; height: 5px; border-radius: 999px; background: #dfe3dc; }
+    .stage-dots i.done { background: var(--green); }
+    .stage-dots i.current { background: var(--amber); box-shadow: 0 0 0 2px var(--amber-soft); }
+    .stage-dots i.failed { background: var(--red); box-shadow: 0 0 0 2px var(--red-soft); }
+    .run-detail-grid { grid-template-columns: minmax(0, 1.3fr) minmax(290px, .7fr); margin-top: 14px; }
+    .run-timeline { display: grid; }
+    .run-step { display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; gap: 10px; position: relative; padding-bottom: 15px; }
+    .run-step:not(:last-child)::before { content: ""; position: absolute; left: 11px; top: 23px; bottom: 0; width: 1px; background: var(--line); }
+    .step-mark { width: 23px; height: 23px; z-index: 1; display: grid; place-items: center; border-radius: 50%; background: var(--green-soft); color: var(--green); font-size: .57rem; font-weight: 900; }
+    .step-mark.wait { background: var(--amber-soft); color: var(--amber); }
+    .step-mark.fail { background: var(--red-soft); color: var(--red); }
+    .run-step strong { display: block; font-size: .68rem; }
+    .run-step p { margin: 3px 0 0; color: var(--muted); font-size: .6rem; }
+    .run-step time { color: var(--muted); font-size: .58rem; }
+    .review-box { padding: 15px; border: 1px solid #e5c48d; border-radius: 10px; background: var(--amber-soft); }
+    .review-box p { margin: 5px 0 12px; color: #76501f; font-size: .65rem; }
+    .review-facts { display: grid; gap: 8px; margin-bottom: 13px; }
+    .review-fact { display: flex; justify-content: space-between; gap: 10px; padding-bottom: 7px; border-bottom: 1px solid rgba(168, 99, 19, .18); font-size: .62rem; }
+    .metric-list { display: grid; gap: 11px; }
+    .metric-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 10px; padding-bottom: 10px; border-bottom: 1px solid #ebede7; }
+    .metric-row:last-child { border-bottom: 0; }
+    .metric-row span { color: var(--muted); font-size: .64rem; }
+    .metric-row strong { font-size: .82rem; }
+    .security-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .security-card { min-height: 150px; padding: 16px; border: 1px solid var(--line); border-radius: 11px; background: var(--paper); }
+    .security-card .number { margin: 12px 0 5px; font-size: 1.6rem; font-weight: 790; letter-spacing: -.04em; }
+    .security-card p { color: var(--muted); font-size: .65rem; }
+    .security-card .mini-track { height: 5px; margin-top: 14px; overflow: hidden; border-radius: 999px; background: #eceee9; }
+    .security-card .mini-track div { height: 100%; border-radius: inherit; background: var(--green); }
+    .case-list { display: grid; gap: 8px; }
+    .case { display: grid; grid-template-columns: 78px minmax(0, 1fr) 130px 90px auto; gap: 12px; align-items: center; padding: 13px; border: 1px solid var(--line); border-radius: 10px; background: var(--paper); }
+    .case-id { color: var(--green); font-size: .66rem; font-weight: 850; }
+    .case strong { display: block; font-size: .72rem; }
+    .case p { margin: 3px 0 0; color: var(--muted); font-size: .61rem; }
+    .case-owner { color: var(--muted); font-size: .64rem; }
+    .value-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .value-card { padding: 18px; border: 1px solid var(--line); border-radius: 12px; background: var(--paper); }
+    .value-card .value-big { margin: 13px 0 3px; font-size: 1.85rem; font-weight: 790; letter-spacing: -.05em; }
+    .value-card p { color: var(--muted); font-size: .66rem; }
+    .confidence { margin-top: 13px; display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: .61rem; }
+    .compare { display: grid; grid-template-columns: 150px repeat(2, minmax(0, 1fr)); }
+    .compare > div { padding: 11px 13px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); font-size: .67rem; }
+    .compare > div:nth-child(3n) { border-right: 0; }
+    .compare .header { background: var(--paper-2); color: var(--muted); font-size: .59rem; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
+    .compare .metric { font-weight: 700; }
+    .arch-intro {
+      display: grid;
+      grid-template-columns: minmax(0, 1.3fr) minmax(270px, .7fr);
+      gap: 14px;
+      margin-bottom: 14px;
+    }
+    .no-api { padding: 20px; border-radius: 13px; background: var(--nav); color: #fff; box-shadow: var(--shadow); }
+    .no-api .badge { margin-bottom: 12px; color: var(--nav); background: var(--accent); }
+    .no-api h2 { font-size: 1.2rem; }
+    .no-api p { color: #adc0b6; font-size: .72rem; }
+    .no-api ul { margin: 13px 0 0; padding-left: 18px; color: #e5eee9; font-size: .68rem; }
+    .architecture { display: grid; gap: 9px; }
+    .arch-lane { display: grid; grid-template-columns: 145px minmax(0, 1fr); gap: 9px; }
+    .lane-label { display: grid; align-content: center; padding: 13px; border-radius: 10px; background: var(--nav); color: #fff; }
+    .lane-label strong { display: block; font-size: .7rem; }
+    .lane-label small { margin-top: 3px; color: #9bb0a5; font-size: .57rem; }
+    .lane-nodes { display: grid; grid-template-columns: repeat(auto-fit, minmax(145px, 1fr)); gap: 7px; padding: 7px; border: 1px dashed #cbd0c6; border-radius: 10px; background: rgba(255,255,255,.35); }
+    .arch-node { min-height: 66px; padding: 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--paper); }
+    .arch-node strong { display: block; font-size: .65rem; }
+    .arch-node small { display: block; margin-top: 3px; color: var(--muted); font-size: .57rem; }
+    .request-flow { display: grid; grid-template-columns: repeat(7, minmax(115px, 1fr)); gap: 22px; overflow-x: auto; padding: 3px 2px 12px; }
+    .flow-step { min-width: 115px; min-height: 108px; position: relative; padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--paper-2); }
+    .flow-step:not(:last-child)::after { content: "→"; position: absolute; right: -18px; top: 40%; color: var(--green); font-size: 1rem; font-weight: 900; }
+    .flow-step b { width: 22px; height: 22px; display: grid; place-items: center; margin-bottom: 9px; border-radius: 6px; background: var(--accent); color: var(--nav); font-size: .6rem; }
+    .flow-step strong { display: block; font-size: .65rem; }
+    .flow-step small { display: block; margin-top: 4px; color: var(--muted); font-size: .57rem; }
+    .tech-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    .tech { padding: 13px; border: 1px solid var(--line); border-radius: 9px; background: var(--paper-2); }
+    .tech strong { display: block; font-size: .68rem; }
+    .tech span { display: block; margin-top: 4px; color: var(--muted); font-size: .59rem; }
+    .drawer-backdrop { position: fixed; inset: 0; z-index: 80; display: none; background: rgba(10, 19, 15, .42); }
+    .drawer-backdrop.open { display: block; }
+    .drawer {
+      position: fixed;
+      z-index: 90;
+      top: 0;
+      right: 0;
+      width: min(470px, 94vw);
+      height: 100vh;
+      overflow-y: auto;
+      padding: 25px;
+      background: var(--paper);
+      box-shadow: -18px 0 60px rgba(12, 25, 18, .17);
+      transform: translateX(105%);
+      transition: transform .25s ease;
+    }
+    .drawer.open { transform: translateX(0); }
+    .drawer-head { display: flex; justify-content: space-between; gap: 12px; align-items: start; padding-bottom: 18px; border-bottom: 1px solid var(--line); }
+    .drawer-head h2 { font-size: 1.25rem; }
+    .close { width: 31px; height: 31px; border: 1px solid var(--line); border-radius: 8px; background: var(--paper); cursor: pointer; }
+    .drawer-section { padding: 18px 0; border-bottom: 1px solid var(--line); }
+    .drawer-section:last-child { border-bottom: 0; }
+    .drawer-section h3 { margin-bottom: 10px; color: var(--muted); font-size: .64rem; letter-spacing: .08em; text-transform: uppercase; }
+    .detail-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 10px; }
+    .detail { padding: 10px; border-radius: 8px; background: var(--paper-2); }
+    .detail span { display: block; color: var(--muted); font-size: .58rem; }
+    .detail strong { display: block; margin-top: 3px; font-size: .69rem; }
+    .toast { position: fixed; right: 22px; bottom: 22px; z-index: 120; max-width: 350px; padding: 12px 14px; border-radius: 10px; background: var(--nav); color: #fff; box-shadow: var(--shadow); font-size: .7rem; opacity: 0; transform: translateY(15px); pointer-events: none; transition: .2s ease; }
+    .toast.show { opacity: 1; transform: translateY(0); }
+    @media (max-width: 1180px) {
+      .stats { grid-template-columns: repeat(3, minmax(0,1fr)); }
+      .gate-grid, .tech-grid { grid-template-columns: repeat(2, minmax(0,1fr)); }
+      .case { grid-template-columns: 70px minmax(0,1fr) 100px auto; }
+      .case-owner { display: none; }
+    }
+    @media (max-width: 900px) {
+      .app { grid-template-columns: 1fr; }
+      .sidebar { position: fixed; left: 0; z-index: 70; width: 250px; transform: translateX(-105%); transition: transform .2s ease; }
+      .sidebar.open { transform: translateX(0); }
+      .menu-button { display: block; }
+      .overview-grid, .portfolio, .trace-layout, .arch-intro { grid-template-columns: 1fr; }
+      .run-detail-grid { grid-template-columns: 1fr; }
+      .security-grid, .value-grid { grid-template-columns: repeat(2, minmax(0,1fr)); }
+      .topbar { padding: 0 18px; }
+      .content { padding: 23px 18px 45px; }
+    }
+    @media (max-width: 650px) {
+      .stats, .security-grid, .value-grid, .gate-grid, .tech-grid { grid-template-columns: 1fr; }
+      .page-head { display: block; }
+      .head-actions { margin-top: 14px; }
+      .search { display: none; }
+      .environment { display: none; }
+      .donut-wrap { grid-template-columns: 1fr; }
+      .case { grid-template-columns: 65px minmax(0,1fr) auto; }
+      .case .badge:nth-of-type(1) { display: none; }
+      .compare { grid-template-columns: 100px repeat(2, minmax(100px,1fr)); overflow-x: auto; }
+      .arch-lane { grid-template-columns: 1fr; }
+      .lane-nodes { grid-template-columns: 1fr 1fr; }
+      .detail-grid { grid-template-columns: 1fr; }
+      .definition-note { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar" id="sidebar" aria-label="Primary navigation">
+      <div class="brand">
+        <div class="brand-mark">NS</div>
+        <div><strong>Northstar</strong><small>Local AI Control Tower</small></div>
+      </div>
+      <div class="nav-label">Control plane</div>
+      <nav class="nav">
+        <button data-view="overview" aria-selected="true"><span class="nav-icon">OV</span>Overview</button>
+        <div class="nav-group">
+          <button data-view="inventory"><span class="nav-icon">AI</span>Asset inventory<span class="nav-count">38</span></button>
+          <div class="subnav" aria-label="Asset types">
+            <button data-inventory-type="all" aria-current="true">All assets</button>
+            <button data-inventory-type="AI system">AI systems</button>
+            <button data-inventory-type="Agentic workflow">Agentic workflows</button>
+            <button data-inventory-type="Agent">Agents</button>
+            <button data-inventory-type="Model">Models</button>
+            <button data-inventory-type="Prompt">Prompts</button>
+            <button data-inventory-type="Dataset">Datasets</button>
+            <button data-inventory-type="Knowledge index">Knowledge indexes</button>
+            <button data-inventory-type="MCP server">MCP servers</button>
+          </div>
+        </div>
+        <button data-view="lifecycle"><span class="nav-icon">LC</span>Governance lifecycle<span class="nav-count">5</span></button>
+        <button data-view="runtime"><span class="nav-icon">RT</span>Runtime operations</button>
+        <button data-view="security"><span class="nav-icon">SC</span>Security & privacy<span class="nav-count alert">3</span></button>
+      </nav>
+      <div class="side-bottom">
+        <div class="provider-card">
+          <div class="line"><strong>Model provider</strong><span class="status-dot"></span></div>
+          <p>Not configured. Governance and simulation remain available.</p>
+          <button data-action="provider">Configure later</button>
+        </div>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <button class="menu-button" id="menuButton" aria-label="Open navigation">☰</button>
+        <div class="workspace-switcher">Workspace / <strong>Enterprise AI</strong></div>
+        <span class="environment">Local · Docker</span>
+        <div class="top-actions">
+          <label class="search"><span>⌕</span><input id="globalSearch" type="search" placeholder="Search assets, workflows, traces…"></label>
+          <button class="button small" data-action="simulate">Run simulation</button>
+          <div class="avatar" title="AI Steward">AS</div>
+        </div>
+      </header>
+
+      <div class="content">
+        <section class="view" id="overview">
+          <div class="page-head">
+            <div><div class="eyebrow">Monday, 27 July · Portfolio pulse</div><h1>AI governance, without blind spots.</h1><p>Inventory, registry decisions, workflow execution and security evidence across the local AI estate.</p></div>
+            <div class="head-actions"><button class="button" data-view-target="runtime">View live workflows</button><button class="button primary" data-action="register">Register asset</button></div>
+          </div>
+          <div class="grid stats">
+            <article class="stat"><div class="stat-top"><span>Managed assets</span><span class="stat-icon">AI</span></div><div class="stat-value">31 <small style="font-size:.75rem;color:var(--muted)">/ 38</small></div><div class="stat-note"><span class="trend-up">+4 this week</span> · 7 discovered</div></article>
+            <article class="stat"><div class="stat-top"><span>Control coverage</span><span class="stat-icon">GC</span></div><div class="stat-value">92%</div><div class="stat-note"><span class="trend-up">+6.2%</span> since last release</div></article>
+            <article class="stat"><div class="stat-top"><span>Open decisions</span><span class="stat-icon">AP</span></div><div class="stat-value">5</div><div class="stat-note">2 deployment approvals due today</div></article>
+            <article class="stat"><div class="stat-top"><span>Critical findings</span><span class="stat-icon">AL</span></div><div class="stat-value">3</div><div class="stat-note"><span class="trend-down">1 new</span> unauthorized tool call</div></article>
+            <article class="stat"><div class="stat-top"><span>Active workflow runs</span><span class="stat-icon">WF</span></div><div class="stat-value">12</div><div class="stat-note">3 paused for human review</div></article>
+          </div>
+
+          <div class="grid overview-grid">
+            <article class="panel">
+              <div class="section-head"><div><h2>Runtime health</h2><p>Successful governed executions versus policy interventions.</p></div><span class="badge green"><span class="dot"></span>All core services healthy</span></div>
+              <div class="health-chart">
+                <div class="axis-y"><span>1.2k</span><span>800</span><span>400</span><span>0</span></div>
+                <div class="plot" aria-label="Runtime health chart">
+                  <div class="bar-group"><div class="bar" style="height:63%"></div><div class="bar secondary" style="height:9%"></div><span class="bar-label">Mon</span></div>
+                  <div class="bar-group"><div class="bar" style="height:74%"></div><div class="bar secondary" style="height:12%"></div><span class="bar-label">Tue</span></div>
+                  <div class="bar-group"><div class="bar" style="height:69%"></div><div class="bar secondary" style="height:7%"></div><span class="bar-label">Wed</span></div>
+                  <div class="bar-group"><div class="bar" style="height:82%"></div><div class="bar secondary" style="height:14%"></div><span class="bar-label">Thu</span></div>
+                  <div class="bar-group"><div class="bar" style="height:78%"></div><div class="bar secondary" style="height:8%"></div><span class="bar-label">Fri</span></div>
+                  <div class="bar-group"><div class="bar" style="height:91%"></div><div class="bar secondary" style="height:6%"></div><span class="bar-label">Sat</span></div>
+                  <div class="bar-group"><div class="bar" style="height:87%"></div><div class="bar secondary" style="height:10%"></div><span class="bar-label">Sun</span></div>
+                </div>
+              </div>
+              <div class="legend"><span><i></i>Successful executions</span><span class="second"><i></i>Policy interventions</span></div>
+            </article>
+            <article class="panel">
+              <div class="section-head"><div><h2>Needs your decision</h2><p>Evidence-ready approvals and exceptions.</p></div><a href="#" data-view-target="lifecycle">View all</a></div>
+              <div class="decision-list">
+                <div class="decision-item"><div class="row"><span class="badge amber">Deployment</span><strong>Access Copilot v0.7</strong></div><p>Shadow evaluation passed 8/9 gates; cost evidence awaits review.</p><div class="decision-meta"><span>Due in 3h · Priya N.</span><button class="button small" data-action="review">Review</button></div></div>
+                <div class="decision-item"><div class="row"><span class="badge red">Exception</span><strong>Keycloak write scope</strong></div><p>Provisioning agent requests temporary role-grant permission.</p><div class="decision-meta"><span>Due today · Security</span><button class="button small" data-action="review">Review</button></div></div>
+                <div class="decision-item"><div class="row"><span class="badge blue">Dataset</span><strong>Ticket corpus 2026.07</strong></div><p>License captured; PII and leakage assessment ready.</p><div class="decision-meta"><span>Due tomorrow · Data office</span><button class="button small" data-action="review">Review</button></div></div>
+              </div>
+            </article>
+          </div>
+
+          <div class="grid portfolio">
+            <article class="panel">
+              <div class="section-head"><div><h2>Portfolio risk</h2><p>Managed assets by residual risk.</p></div><span class="badge gray">38 total</span></div>
+              <div class="donut-wrap">
+                <div class="donut"><div class="donut-center"><strong>31</strong><span>managed assets</span></div></div>
+                <div class="risk-list">
+                  <div class="risk-row"><span>Low</span><div class="risk-track"><div class="risk-fill" style="width:72%"></div></div><strong>18</strong></div>
+                  <div class="risk-row"><span>Medium</span><div class="risk-track"><div class="risk-fill" style="width:40%;background:var(--amber)"></div></div><strong>10</strong></div>
+                  <div class="risk-row"><span>High</span><div class="risk-track"><div class="risk-fill" style="width:16%;background:var(--red)"></div></div><strong>3</strong></div>
+                  <div class="risk-row"><span>Unmanaged</span><div class="risk-track"><div class="risk-fill" style="width:28%;background:#aeb5af"></div></div><strong>7</strong></div>
+                </div>
+              </div>
+            </article>
+            <article class="panel">
+              <div class="section-head"><div><h2>Live governance feed</h2><p>Decisions and runtime evidence, correlated across the stack.</p></div><span class="badge green"><span class="dot"></span>Streaming</span></div>
+              <div class="event-list" id="eventFeed">
+                <div class="event"><div class="event-icon">PD</div><div><strong>Policy denied unapproved write tool</strong><p>provisioning-agent → keycloak.grant_role · trace 8f3a</p></div><time>2m ago</time></div>
+                <div class="event"><div class="event-icon">EV</div><div><strong>Evaluation suite completed</strong><p>access-copilot v0.7 · 8 passed, 1 needs review</p></div><time>18m ago</time></div>
+                <div class="event"><div class="event-icon">DS</div><div><strong>New Agent Card discovered</strong><p>policy-agent v0.4 · moved to discovered inventory</p></div><time>34m ago</time></div>
+                <div class="event"><div class="event-icon">AP</div><div><strong>Risk assessment approved</strong><p>ticket-intent-classifier v1.3 · medium → low residual risk</p></div><time>1h ago</time></div>
+              </div>
+            </article>
+          </div>
+        </section>
+
+        <section class="view" id="inventory" hidden>
+          <div class="page-head"><div><div class="eyebrow">Governed portfolio</div><h1 id="inventoryTitle">All AI assets</h1><p>Choose an asset type in the sidebar or search the dependency-aware catalogue.</p></div><div class="head-actions"><button class="button" data-action="discover">Run discovery</button><button class="button primary" data-action="register">Register asset</button></div></div>
+          <article class="panel flush">
+            <div class="toolbar"><input class="filter grow" id="assetSearch" placeholder="Filter by asset, owner or identifier"><select class="filter" id="typeFilter"><option value="all">All asset types</option><option>AI system</option><option>Agentic workflow</option><option>Agent</option><option>Model</option><option>Prompt</option><option>Dataset</option><option>Knowledge index</option><option>MCP server</option></select><select class="filter"><option>All lifecycle states</option><option>Discovered</option><option>Assess</option><option>Build & test</option><option>Production</option></select></div>
+            <div class="table-wrap">
+              <table id="assetTable">
+                <thead><tr><th>Asset</th><th>Type</th><th>Lifecycle</th><th>Risk</th><th>Owner</th><th>Environment</th><th>Last evidence</th><th></th></tr></thead>
+                <tbody>
+                  <tr><td><div class="asset-name"><span class="asset-symbol">SYS</span><div><strong>Employee Access Copilot</strong><small>AIS-001 · version 0.7</small></div></div></td><td>AI system</td><td><span class="badge amber">Steward review</span></td><td><span class="badge amber">Medium</span></td><td><div class="owner"><span class="owner-dot">PN</span>Priya N.</div></td><td>Shadow</td><td>18 min ago</td><td><button class="button small asset-open">Open</button></td></tr>
+                  <tr><td><div class="asset-name"><span class="asset-symbol">WF</span><div><strong>Employee Access Request</strong><small>WFL-001 · LangGraph 0.7</small></div></div></td><td>Agentic workflow</td><td><span class="badge amber">Steward review</span></td><td><span class="badge red">High</span></td><td><div class="owner"><span class="owner-dot">PN</span>Priya N.</div></td><td>Shadow</td><td>6 min ago</td><td><button class="button small asset-open">Open</button></td></tr>
+                  <tr><td><div class="asset-name"><span class="asset-symbol">AG</span><div><strong>Policy & Risk Agent</strong><small>AGT-003 · version 0.4</small></div></div></td><td>Agent</td><td><span class="badge blue">Build & test</span></td><td><span class="badge amber">Medium</span></td><td><div class="owner"><span class="owner-dot">RK</span>Ravi K.</div></td><td>Development</td><td>34 min ago</td><td><button class="button small asset-open">Open</button></td></tr>
+                  <tr><td><div class="asset-name"><span class="asset-symbol">ML</span><div><strong>Ticket Intent Classifier</strong><small>MOD-012 · version 1.3</small></div></div></td><td>Model</td><td><span class="badge green">Production</span></td><td><span class="badge green">Low</span></td><td><div class="owner"><span class="owner-dot">AM</span>Aisha M.</div></td><td>Production</td><td>1 hr ago</td><td><button class="button small asset-open">Open</button></td></tr>
+                  <tr><td><div class="asset-name"><span class="asset-symbol">DS</span><div><strong>Access Ticket Corpus</strong><small>DAT-006 · snapshot 2026.07</small></div></div></td><td>Dataset</td><td><span class="badge purple">Assess</span></td><td><span class="badge amber">Medium</span></td><td><div class="owner"><span class="owner-dot">SO</span>Sarah O.</div></td><td>Offline</td><td>3 hrs ago</td><td><button class="button small asset-open">Open</button></td></tr>
+                  <tr><td><div class="asset-name"><span class="asset-symbol">MC</span><div><strong>Keycloak MCP Server</strong><small>MCP-004 · version 0.2</small></div></div></td><td>MCP server</td><td><span class="badge amber">Steward review</span></td><td><span class="badge red">High</span></td><td><div class="owner"><span class="owner-dot">IT</span>IAM Team</div></td><td>Shadow</td><td>2 min ago</td><td><button class="button small asset-open">Open</button></td></tr>
+                  <tr><td><div class="asset-name"><span class="asset-symbol">PR</span><div><strong>Entitlement Recommendation</strong><small>PRM-021 · version 3.1</small></div></div></td><td>Prompt</td><td><span class="badge gray">Discovered</span></td><td><span class="badge gray">Unassessed</span></td><td><div class="owner"><span class="owner-dot">?</span>Unassigned</div></td><td>Development</td><td>Yesterday</td><td><button class="button small asset-open">Open</button></td></tr>
+                  <tr><td><div class="asset-name"><span class="asset-symbol">KB</span><div><strong>Access Policy Index</strong><small>IDX-002 · snapshot 2026.07.27</small></div></div></td><td>Knowledge index</td><td><span class="badge blue">Build & test</span></td><td><span class="badge amber">Medium</span></td><td><div class="owner"><span class="owner-dot">SO</span>Sarah O.</div></td><td>Shadow</td><td>42 min ago</td><td><button class="button small asset-open">Open</button></td></tr>
+                </tbody>
+              </table>
+            </div>
+          </article>
+        </section>
+
+        <section class="view" id="lifecycle" hidden>
+          <div class="page-head"><div><div class="eyebrow">Evidence before deployment</div><h1>Asset governance lifecycle</h1><p>How a registered asset version becomes approved for use—not the stages of a running workflow.</p></div><div class="head-actions"><button class="button">Admission policy</button><button class="button primary" data-action="review">Registry review queue · 5</button></div></div>
+          <div class="definition-note">
+            <div class="definition-card"><strong>Asset governance lifecycle — this page</strong><p>Applies to a version of a workflow, agent, model, prompt, dataset, knowledge index or MCP server. It answers: “May this asset be used, where, and under what controls?”</p><span class="path">Discovered → Assessed → Tested → Approved → Deployed → Retired</span></div>
+            <div class="definition-card"><strong>Workflow run lifecycle — Runtime Operations</strong><p>Applies to one execution, such as access request AR-20481. It answers: “What is happening now, where is it paused, and why did it fail?”</p><span class="path">Queued → Running → Human review → Completed / Failed</span></div>
+          </div>
+          <article class="panel">
+            <div class="section-head"><div><h2>Registry progression by asset version</h2><p>Current workflow definitions and their dependent agents, models, prompts, data and MCP servers.</p></div><span class="badge blue">Evidence and approvals drive transitions</span></div>
+            <div class="lifecycle-board">
+              <div class="stage"><div class="stage-head"><strong>Discovered</strong><span>7</span></div><div class="asset-card"><strong>Entitlement prompt v3.1</strong><p>Discovered from Langfuse</p><footer><span class="badge gray">Unmanaged</span><span class="owner-dot">?</span></footer></div><div class="asset-card"><strong>Policy Agent v0.4</strong><p>Agent Card changed</p><footer><span class="badge amber">Drift</span><span class="owner-dot">RK</span></footer></div></div>
+              <div class="stage"><div class="stage-head"><strong>Assess</strong><span>4</span></div><div class="asset-card"><strong>Access ticket corpus</strong><p>PII scan and license review</p><footer><span class="badge purple">Dataset</span><span class="owner-dot">SO</span></footer></div><div class="asset-card"><strong>Risk anomaly model</strong><p>Threat model required</p><footer><span class="badge blue">Model</span><span class="owner-dot">AM</span></footer></div></div>
+              <div class="stage"><div class="stage-head"><strong>Build & test</strong><span>6</span></div><div class="asset-card"><strong>Policy & Risk Agent</strong><p>7/9 evaluations passed</p><footer><span class="badge amber">2 open</span><span class="owner-dot">RK</span></footer></div><div class="asset-card"><strong>GLPI MCP Server</strong><p>Contract tests running</p><footer><span class="badge blue">MCP</span><span class="owner-dot">IT</span></footer></div></div>
+              <div class="stage"><div class="stage-head"><strong>Steward review</strong><span>2</span></div><div class="asset-card"><strong>Access Copilot v0.7</strong><p>8/9 gates · cost review</p><footer><button class="button small" data-action="review">Review</button><span class="owner-dot">PN</span></footer></div><div class="asset-card"><strong>Keycloak MCP</strong><p>High-risk write scope</p><footer><button class="button small" data-action="review">Review</button><span class="owner-dot">IT</span></footer></div></div>
+              <div class="stage"><div class="stage-head"><strong>Deployed</strong><span>19</span></div><div class="asset-card"><strong>Intent classifier v1.3</strong><p>Production · healthy</p><footer><span class="badge green">Production</span><span class="owner-dot">AM</span></footer></div><div class="asset-card"><strong>Knowledge MCP v1.0</strong><p>Production · read-only</p><footer><span class="badge green">Production</span><span class="owner-dot">IT</span></footer></div></div>
+            </div>
+          </article>
+          <article class="panel">
+            <div class="section-head"><div><h2>Production admission gates</h2><p>Machine-enforced evidence required before an asset can serve production traffic.</p></div><span class="badge green">OPA policy v1.8.2</span></div>
+            <div class="grid gate-grid">
+              <div class="gate"><div class="gate-num">01</div><h3>Purpose & ownership</h3><p>Named owner, intended and prohibited use, autonomy level and affected users.</p></div>
+              <div class="gate"><div class="gate-num">02</div><h3>Data & risk</h3><p>License, PII, quality, threat model, residual risk and control assessment.</p></div>
+              <div class="gate"><div class="gate-num">03</div><h3>Quality & safety</h3><p>Frozen evaluation, policy compliance, security tests and failure thresholds.</p></div>
+              <div class="gate"><div class="gate-num">04</div><h3>Operations</h3><p>Cost and latency budgets, observability, rollback, kill switch and on-call owner.</p></div>
+            </div>
+          </article>
+        </section>
+
+        <section class="view" id="runtime" hidden>
+          <div class="page-head"><div><div class="eyebrow">Live workflow execution</div><h1>Runtime operations</h1><p>See every workflow run, its current stage, why it paused or failed, and the evidence needed to act.</p></div><div class="head-actions"><button class="button" data-action="simulate">Simulate new run</button><button class="button primary">Open trace explorer</button></div></div>
+          <div class="grid stats">
+            <article class="stat"><div class="stat-top"><span>Running now</span><span class="stat-icon">RN</span></div><div class="stat-value">12</div><div class="stat-note">Across 3 workflow definitions</div></article>
+            <article class="stat"><div class="stat-top"><span>Waiting for human</span><span class="stat-icon">HR</span></div><div class="stat-value">3</div><div class="stat-note"><span class="trend-down">Oldest 18m</span> · action required</div></article>
+            <article class="stat"><div class="stat-top"><span>Failed · 24h</span><span class="stat-icon">FL</span></div><div class="stat-value">2</div><div class="stat-note">1 tool timeout · 1 schema error</div></article>
+            <article class="stat"><div class="stat-top"><span>Completed · 24h</span><span class="stat-icon">OK</span></div><div class="stat-value">184</div><div class="stat-note"><span class="trend-up">97.4%</span> completion rate</div></article>
+            <article class="stat"><div class="stat-top"><span>p95 run duration</span><span class="stat-icon">LT</span></div><div class="stat-value">2m 18s</div><div class="stat-note">Excludes time awaiting humans</div></article>
+          </div>
+          <article class="panel flush">
+            <div class="toolbar">
+              <div class="run-status-tabs" aria-label="Workflow run status">
+                <button data-run-filter="all" aria-selected="true">All runs · 201</button>
+                <button data-run-filter="Running">Running · 12</button>
+                <button data-run-filter="Human review">Human review · 3</button>
+                <button data-run-filter="Failed">Failed · 2</button>
+                <button data-run-filter="Completed">Completed · 184</button>
+              </div>
+              <input class="filter grow" id="runSearch" placeholder="Search run ID, workflow or requester">
+              <select class="filter"><option>All workflow definitions</option><option>Employee Access Request</option><option>Knowledge Ingestion</option><option>Model Evaluation</option></select>
+            </div>
+            <div class="table-wrap">
+              <table id="runTable">
+                <thead><tr><th>Run</th><th>Current stage</th><th>Progress</th><th>Status</th><th>Started / elapsed</th><th>Owner</th><th></th></tr></thead>
+                <tbody>
+                  <tr data-run-status="Human review"><td><div class="run-name"><strong>Employee Access Request</strong><small>RUN-20481 · request AR-8821 · v0.7</small></div></td><td><strong>Manager approval</strong><br><small class="muted">Policy risk: medium</small></td><td><div class="stage-progress"><strong>5 of 8 stages</strong><div class="stage-dots"><i class="done"></i><i class="done"></i><i class="done"></i><i class="done"></i><i class="current"></i><i></i><i></i><i></i></div></div></td><td><span class="badge amber">Human review</span></td><td>12:24 · paused 8m</td><td>Meera S.</td><td><button class="button small accent run-review">Review now</button></td></tr>
+                  <tr data-run-status="Running"><td><div class="run-name"><strong>Employee Access Request</strong><small>RUN-20484 · request AR-8824 · v0.7</small></div></td><td><strong>Retrieve policy</strong><br><small class="muted">Knowledge agent active</small></td><td><div class="stage-progress"><strong>3 of 8 stages</strong><div class="stage-dots"><i class="done"></i><i class="done"></i><i class="current"></i><i></i><i></i><i></i><i></i><i></i></div></div></td><td><span class="badge blue">Running</span></td><td>12:31 · 22s</td><td>System</td><td><button class="button small run-open">Inspect</button></td></tr>
+                  <tr data-run-status="Failed"><td><div class="run-name"><strong>Employee Access Request</strong><small>RUN-20477 · request AR-8817 · v0.7</small></div></td><td><strong>Provision entitlement</strong><br><small class="muted">Keycloak MCP call</small></td><td><div class="stage-progress"><strong>7 of 8 stages</strong><div class="stage-dots"><i class="done"></i><i class="done"></i><i class="done"></i><i class="done"></i><i class="done"></i><i class="done"></i><i class="failed"></i><i></i></div></div></td><td><span class="badge red">Failed</span></td><td>12:02 · 1m 41s</td><td>Platform Ops</td><td><button class="button small run-trace">View trace</button></td></tr>
+                  <tr data-run-status="Running"><td><div class="run-name"><strong>Knowledge Ingestion</strong><small>RUN-ING-390 · policy bundle 2026.07</small></div></td><td><strong>Retrieval evaluation</strong><br><small class="muted">Dagster evaluation job</small></td><td><div class="stage-progress"><strong>6 of 7 stages</strong><div class="stage-dots"><i class="done"></i><i class="done"></i><i class="done"></i><i class="done"></i><i class="done"></i><i class="current"></i><i></i></div></div></td><td><span class="badge blue">Running</span></td><td>11:58 · 36m</td><td>Data Platform</td><td><button class="button small run-open">Inspect</button></td></tr>
+                  <tr data-run-status="Completed"><td><div class="run-name"><strong>Model Evaluation</strong><small>RUN-EVL-289 · classifier candidate 1.4</small></div></td><td><strong>Promotion report</strong><br><small class="muted">Evidence stored</small></td><td><div class="stage-progress"><strong>6 of 6 stages</strong><div class="stage-dots"><i class="done"></i><i class="done"></i><i class="done"></i><i class="done"></i><i class="done"></i><i class="done"></i></div></div></td><td><span class="badge green">Completed</span></td><td>10:44 · 18m</td><td>ML Platform</td><td><button class="button small run-open">Inspect</button></td></tr>
+                </tbody>
+              </table>
+            </div>
+          </article>
+
+          <div class="grid run-detail-grid" id="selectedRun">
+            <article class="panel">
+              <div class="section-head"><div><h2>Selected run · RUN-20481</h2><p>Employee Access Request for AR-8821 · correlated trace 8f3a-91c2.</p></div><span class="badge amber">Paused for a decision</span></div>
+              <div class="run-timeline">
+                <div class="run-step"><span class="step-mark">✓</span><div><strong>Request intake</strong><p>GLPI request normalized; requester and target application resolved.</p></div><time>12:24:02</time></div>
+                <div class="run-step"><span class="step-mark">✓</span><div><strong>Privacy filtering</strong><p>Employee ID tokenized before downstream agents and traces.</p></div><time>12:24:03</time></div>
+                <div class="run-step"><span class="step-mark">✓</span><div><strong>Intent and entitlement classification</strong><p>Access request · SAP Finance Viewer · confidence 0.94.</p></div><time>12:24:03</time></div>
+                <div class="run-step"><span class="step-mark">✓</span><div><strong>Policy and risk assessment</strong><p>Medium risk because requested access crosses cost-centre boundary.</p></div><time>12:24:06</time></div>
+                <div class="run-step"><span class="step-mark wait">!</span><div><strong>Manager approval</strong><p>LangGraph interrupt persisted. Execution will resume from this checkpoint after a decision.</p></div><time>waiting 8m</time></div>
+                <div class="run-step"><span class="step-mark">6</span><div><strong>Provision, verify and close</strong><p>Not started. No write capability has been issued.</p></div><time>pending</time></div>
+              </div>
+            </article>
+            <aside class="panel">
+              <div class="section-head"><div><h2>Human decision required</h2><p>The workflow is paused intentionally, not unhealthy.</p></div></div>
+              <div class="review-box">
+                <strong>SAP Finance Viewer for 90 days</strong>
+                <p>Requested by Alex Morgan. The policy agent found no segregation-of-duty conflict, but cross-cost-centre access requires the employee’s manager.</p>
+                <div class="review-facts"><div class="review-fact"><span>Risk</span><strong>Medium</strong></div><div class="review-fact"><span>Policy evidence</span><strong>AC-14 §3.2</strong></div><div class="review-fact"><span>Expiry</span><strong>25 Oct 2026</strong></div><div class="review-fact"><span>Write performed</span><strong>No</strong></div></div>
+                <div class="row"><button class="button small" data-action="runtime-reject">Reject</button><button class="button small primary" data-action="runtime-approve">Approve & resume</button></div>
+              </div>
+            </aside>
+          </div>
+
+          <article class="panel" id="failedRun">
+            <div class="section-head"><div><h2>Failed run · RUN-20477</h2><p>Failure context is shown beside the workflow stage instead of sending the operator to a separate incident module.</p></div><button class="button small run-trace">Open complete trace</button></div>
+            <div class="grid trace-layout">
+              <div>
+                <div class="trace"><span class="trace-name">API intake</span><div class="trace-track"><div class="trace-span green" style="width:11%"></div></div><span class="trace-time">42 ms</span></div>
+                <div class="trace"><span class="trace-name">Policy agent</span><div class="trace-track"><div class="trace-span green" style="width:49%"></div></div><span class="trace-time">742 ms</span></div>
+                <div class="trace"><span class="trace-name">Human approval</span><div class="trace-track"><div class="trace-span green" style="width:22%"></div></div><span class="trace-time">approved</span></div>
+                <div class="trace"><span class="trace-name">Keycloak MCP</span><div class="trace-track"><div class="trace-span amber" style="width:100%;background:var(--red)"></div></div><span class="trace-time">timeout</span></div>
+              </div>
+              <div class="metric-list">
+                <div class="metric-row"><span>Failed node</span><strong>provision_entitlement</strong></div>
+                <div class="metric-row"><span>Error</span><strong style="color:var(--red)">MCP timeout after 10s</strong></div>
+                <div class="metric-row"><span>Side effect</span><strong style="color:var(--green)">None verified</strong></div>
+                <div class="metric-row"><span>Checkpoint</span><strong>Before tool execution</strong></div>
+                <div class="metric-row"><span>Next action</span><strong>Retry after health check</strong></div>
+              </div>
+            </div>
+          </article>
+        </section>
+
+        <section class="view" id="security" hidden>
+          <div class="page-head"><div><div class="eyebrow">Zero implicit trust</div><h1>Security & privacy</h1><p>Deterministic enforcement around identities, prompts, data and tool execution.</p></div><div class="head-actions"><button class="button">Export evidence</button><button class="button danger" data-action="kill">Emergency controls</button></div></div>
+          <div class="grid security-grid">
+            <article class="security-card"><span class="badge red">Critical</span><div class="number">1</div><h3>Unauthorized tool calls</h3><p>Blocked by the gateway before reaching a target system.</p><div class="mini-track"><div style="width:18%;background:var(--red)"></div></div></article>
+            <article class="security-card"><span class="badge amber">Investigate</span><div class="number">7</div><h3>Prompt injection signals</h3><p>Six contained; one awaiting analyst classification.</p><div class="mini-track"><div style="width:61%;background:var(--amber)"></div></div></article>
+            <article class="security-card"><span class="badge green">Protected</span><div class="number">248</div><h3>Sensitive values tokenized</h3><p>Raw values excluded from AI and observability traces.</p><div class="mini-track"><div style="width:84%"></div></div></article>
+            <article class="security-card"><span class="badge green">Clear</span><div class="number">0</div><h3>Goal deviation</h3><p>No agent actions outside declared intended use.</p><div class="mini-track"><div style="width:4%"></div></div></article>
+            <article class="security-card"><span class="badge amber">Review</span><div class="number">2</div><h3>Unmanaged assets active</h3><p>Restricted to development by gateway policy.</p><div class="mini-track"><div style="width:29%;background:var(--amber)"></div></div></article>
+            <article class="security-card"><span class="badge green">Healthy</span><div class="number">100%</div><h3>Privileged calls audited</h3><p>Identity, arguments, approval and receipt captured.</p><div class="mini-track"><div style="width:100%"></div></div></article>
+          </div>
+          <article class="panel" style="margin-top:14px">
+            <div class="section-head"><div><h2>Recent security events</h2><p>Each event links directly to the affected workflow run, asset and immutable trace evidence.</p></div></div>
+            <div class="table-wrap"><table><thead><tr><th>Time</th><th>Detection</th><th>Actor / asset</th><th>Enforcement</th><th>Severity</th><th>Run / trace</th></tr></thead><tbody>
+              <tr><td>12:42:18</td><td>Write tool without approval artefact</td><td>provisioning-agent</td><td><span class="badge green">Blocked</span></td><td><span class="badge red">Critical</span></td><td>RUN-20477 / 8f3a</td></tr>
+              <tr><td>11:16:03</td><td>Instruction override pattern</td><td>access-copilot</td><td><span class="badge green">Contained</span></td><td><span class="badge amber">Medium</span></td><td>RUN-20461 / 71c9</td></tr>
+              <tr><td>10:08:44</td><td>Email and employee ID detected</td><td>privacy-filter</td><td><span class="badge green">Tokenized</span></td><td><span class="badge blue">Low</span></td><td>RUN-20449 / 50d2</td></tr>
+            </tbody></table></div>
+          </article>
+        </section>
+
+      </div>
+    </main>
+  </div>
+
+  <div class="drawer-backdrop" id="backdrop"></div>
+  <aside class="drawer" id="drawer" aria-hidden="true">
+    <div class="drawer-head"><div><div class="eyebrow">Governance record</div><h2 id="drawerTitle">Employee Access Copilot</h2><span class="badge amber">Steward review</span></div><button class="close" id="closeDrawer" aria-label="Close details">×</button></div>
+    <div id="drawerBody">
+      <div class="drawer-section"><h3>Accountability</h3><div class="detail-grid"><div class="detail"><span>Owner</span><strong>Priya Nair</strong></div><div class="detail"><span>Risk</span><strong>Medium</strong></div><div class="detail"><span>Version</span><strong>0.7+4d31c</strong></div><div class="detail"><span>Environment</span><strong>Shadow</strong></div></div></div>
+      <div class="drawer-section"><h3>Intended use</h3><p style="font-size:.7rem;color:var(--muted)">Recommend least-privilege application access, collect approval and provision only through approval-bound MCP tools. Must not autonomously grant privileged or segregation-of-duty conflicting access.</p></div>
+      <div class="drawer-section"><h3>Admission evidence</h3><div class="metric-list"><div class="metric-row"><span>Ownership and purpose</span><strong style="color:var(--green)">Passed</strong></div><div class="metric-row"><span>Risk and threat model</span><strong style="color:var(--green)">Passed</strong></div><div class="metric-row"><span>Frozen quality evaluation</span><strong style="color:var(--green)">Passed</strong></div><div class="metric-row"><span>Cost evidence</span><strong style="color:var(--amber)">Review</strong></div><div class="metric-row"><span>Rollback and kill switch</span><strong style="color:var(--green)">Passed</strong></div></div></div>
+      <div class="drawer-section"><div class="row" style="justify-content:flex-end"><button class="button">Request changes</button><button class="button primary" data-action="approve">Approve for shadow</button></div></div>
+    </div>
+  </aside>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script>
+    const views = [...document.querySelectorAll(".view")];
+    const navButtons = [...document.querySelectorAll(".nav button[data-view]")];
+    const sidebar = document.getElementById("sidebar");
+    const toast = document.getElementById("toast");
+    const drawer = document.getElementById("drawer");
+    const backdrop = document.getElementById("backdrop");
+    const drawerBody = document.getElementById("drawerBody");
+    const assetDrawerTemplate = drawerBody.innerHTML;
+
+    function showView(id) {
+      views.forEach(view => view.hidden = view.id !== id);
+      navButtons.forEach(button => button.setAttribute("aria-selected", button.dataset.view === id ? "true" : "false"));
+      sidebar.classList.remove("open");
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+
+    function notify(message) {
+      toast.textContent = message;
+      toast.classList.add("show");
+      clearTimeout(window.toastTimer);
+      window.toastTimer = setTimeout(() => toast.classList.remove("show"), 2800);
+    }
+
+    function openDrawer(title) {
+      drawerBody.innerHTML = assetDrawerTemplate;
+      document.getElementById("drawerTitle").textContent = title || "Employee Access Copilot";
+      drawer.classList.add("open");
+      backdrop.classList.add("open");
+      drawer.setAttribute("aria-hidden", "false");
+    }
+
+    function openRunDrawer(title) {
+      document.getElementById("drawerTitle").textContent = title;
+      drawerBody.innerHTML = `
+        <div class="drawer-section"><h3>Execution context</h3><div class="detail-grid">
+          <div class="detail"><span>Workflow version</span><strong>0.7+4d31c</strong></div>
+          <div class="detail"><span>Status</span><strong>Running</strong></div>
+          <div class="detail"><span>Current node</span><strong>retrieve_policy</strong></div>
+          <div class="detail"><span>Checkpoint</span><strong>Persisted</strong></div>
+        </div></div>
+        <div class="drawer-section"><h3>Current activity</h3><p style="font-size:.7rem;color:var(--muted)">The Knowledge Agent is querying the approved Access Policy index through the read-only knowledge MCP server. Three candidate policy sections have been retrieved and reranking is in progress.</p></div>
+        <div class="drawer-section"><h3>Correlations</h3><div class="metric-list">
+          <div class="metric-row"><span>Workflow run</span><strong>RUN-20484</strong></div>
+          <div class="metric-row"><span>Trace</span><strong>98bc-28d1</strong></div>
+          <div class="metric-row"><span>LangGraph thread</span><strong>AR-8824</strong></div>
+          <div class="metric-row"><span>Last heartbeat</span><strong style="color:var(--green)">2s ago</strong></div>
+        </div></div>`;
+      drawer.classList.add("open");
+      backdrop.classList.add("open");
+      drawer.setAttribute("aria-hidden", "false");
+    }
+
+    function closeDrawer() {
+      drawer.classList.remove("open");
+      backdrop.classList.remove("open");
+      drawer.setAttribute("aria-hidden", "true");
+    }
+
+    navButtons.forEach(button => button.addEventListener("click", () => showView(button.dataset.view)));
+    document.querySelectorAll("[data-view-target]").forEach(button => button.addEventListener("click", event => {
+      event.preventDefault();
+      showView(button.dataset.viewTarget);
+    }));
+    document.getElementById("menuButton").addEventListener("click", () => sidebar.classList.toggle("open"));
+    document.getElementById("closeDrawer").addEventListener("click", closeDrawer);
+    backdrop.addEventListener("click", closeDrawer);
+    document.addEventListener("keydown", event => { if (event.key === "Escape") closeDrawer(); });
+
+    document.querySelectorAll(".asset-open").forEach(button => button.addEventListener("click", () => {
+      const row = button.closest("tr") || button.closest(".case");
+      const title = row?.querySelector("strong")?.textContent;
+      openDrawer(title);
+    }));
+    document.querySelectorAll(".run-open").forEach(button => button.addEventListener("click", () => {
+      const title = button.closest("tr").querySelector(".run-name strong").textContent;
+      openRunDrawer(title);
+    }));
+    document.querySelectorAll(".run-review").forEach(button => button.addEventListener("click", () => {
+      document.getElementById("selectedRun").scrollIntoView({ behavior: "smooth", block: "start" });
+    }));
+    document.querySelectorAll(".run-trace").forEach(button => button.addEventListener("click", () => {
+      document.getElementById("failedRun").scrollIntoView({ behavior: "smooth", block: "start" });
+      notify("Showing the failed node, correlated spans and recovery evidence.");
+    }));
+
+    document.addEventListener("click", event => {
+      const button = event.target.closest("[data-action]");
+      if (!button) return;
+      const action = button.dataset.action;
+      if (action === "review") return openDrawer("Access Copilot v0.7");
+      if (action === "approve") { closeDrawer(); return notify("Approval recorded in mock audit trail."); }
+      if (action === "simulate") {
+        const feed = document.getElementById("eventFeed");
+        if (feed) {
+          const event = document.createElement("div");
+          event.className = "event";
+          event.innerHTML = '<div class="event-icon">SM</div><div><strong>Simulated governed trace completed</strong><p>fixture-provider → policy evaluation → MCP dry-run</p></div><time>now</time>';
+          feed.prepend(event);
+        }
+        return notify("Simulation complete: policy, trace and audit events generated.");
+      }
+      if (action === "discover") return notify("Discovery run queued: Agent Cards, MCP, MLflow and Langfuse.");
+      if (action === "register") return openDrawer("New AI asset");
+      if (action === "provider") return notify("Provider configuration belongs in platform settings and remains optional for this mock.");
+      if (action === "kill") return notify("Emergency controls require steward + security confirmation.");
+      if (action === "runtime-approve") {
+        const pausedRun = document.querySelector('#runTable tbody tr[data-run-status="Human review"]');
+        pausedRun.dataset.runStatus = "Running";
+        pausedRun.querySelector(".badge").className = "badge blue";
+        pausedRun.querySelector(".badge").textContent = "Running";
+        pausedRun.querySelector("td:nth-child(2) strong").textContent = "Provision entitlement";
+        pausedRun.querySelector("td:last-child").innerHTML = '<span class="badge green">Resumed</span>';
+        return notify("Decision recorded. RUN-20481 resumed from its persisted checkpoint.");
+      }
+      if (action === "runtime-reject") return notify("Request rejected. The workflow will close without issuing a write capability.");
+    });
+
+    const assetSearch = document.getElementById("assetSearch");
+    const typeFilter = document.getElementById("typeFilter");
+    function filterAssets() {
+      const term = assetSearch.value.trim().toLowerCase();
+      const type = typeFilter.value.toLowerCase();
+      document.querySelectorAll("#assetTable tbody tr").forEach(row => {
+        const matchesText = row.textContent.toLowerCase().includes(term);
+        const matchesType = type === "all" || row.children[1].textContent.trim().toLowerCase() === type;
+        row.hidden = !(matchesText && matchesType);
+      });
+    }
+    assetSearch.addEventListener("input", filterAssets);
+    typeFilter.addEventListener("change", () => {
+      const selectedType = typeFilter.value;
+      document.getElementById("inventoryTitle").textContent = selectedType === "all" ? "All AI assets" : `${selectedType}s`;
+      document.querySelectorAll("[data-inventory-type]").forEach(button => button.setAttribute("aria-current", button.dataset.inventoryType === selectedType ? "true" : "false"));
+      filterAssets();
+    });
+    document.querySelectorAll("[data-inventory-type]").forEach(button => button.addEventListener("click", () => {
+      showView("inventory");
+      typeFilter.value = button.dataset.inventoryType;
+      typeFilter.dispatchEvent(new Event("change"));
+    }));
+
+    const runSearch = document.getElementById("runSearch");
+    const runFilterButtons = [...document.querySelectorAll("[data-run-filter]")];
+    function filterRuns() {
+      const selected = runFilterButtons.find(button => button.getAttribute("aria-selected") === "true")?.dataset.runFilter || "all";
+      const term = runSearch.value.trim().toLowerCase();
+      document.querySelectorAll("#runTable tbody tr").forEach(row => {
+        const matchesStatus = selected === "all" || row.dataset.runStatus === selected;
+        const matchesText = row.textContent.toLowerCase().includes(term);
+        row.hidden = !(matchesStatus && matchesText);
+      });
+    }
+    runFilterButtons.forEach(button => button.addEventListener("click", () => {
+      runFilterButtons.forEach(item => item.setAttribute("aria-selected", item === button ? "true" : "false"));
+      filterRuns();
+    }));
+    runSearch.addEventListener("input", filterRuns);
+    document.getElementById("globalSearch").addEventListener("keydown", event => {
+      if (event.key === "Enter") {
+        showView("inventory");
+        assetSearch.value = event.currentTarget.value;
+        filterAssets();
+      }
+    });
+  </script>
+</body>
+</html>
