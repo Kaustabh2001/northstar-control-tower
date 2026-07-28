@@ -1,28 +1,14 @@
-from datetime import UTC, datetime
-from uuid import uuid4
-
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from northstar_contracts import AssetRegistration, AssetType, GovernanceState
 
-from .auth import CurrentUser
-from .models import (
-    AgentDetailRecord,
-    AssetDetailRecord,
-    AssetRecord,
-    AuditEventRecord,
-)
-from .schemas import (
-    AgentCardView,
-    AgentDetailResponse,
-    AgentHealth,
-    AssetDependency,
+from ..models import AssetDetailRecord, AssetRecord, AuditEventRecord
+from ..schemas import (
     AssetDetailResponse,
     AssetResponse,
     AuditEvent,
     DashboardSummary,
-    GovernanceControl,
 )
 
 MANAGED_STATES = {
@@ -82,83 +68,6 @@ def get_asset_detail(
     )
 
 
-def get_agent_detail(
-    session: Session,
-    asset_id: str,
-    version: str,
-) -> AgentDetailResponse | None:
-    asset_record = session.get(AssetRecord, (asset_id, version))
-    detail = session.get(AgentDetailRecord, (asset_id, version))
-    if (
-        not asset_record
-        or asset_record.asset_type != AssetType.AGENT.value
-        or not detail
-    ):
-        return None
-    versions = session.scalars(
-        select(AssetRecord)
-        .where(AssetRecord.asset_id == asset_id)
-        .order_by(AssetRecord.created_at.desc())
-    )
-    audit_records = session.scalars(
-        select(AuditEventRecord)
-        .where(AuditEventRecord.asset_id == asset_id)
-        .where(AuditEventRecord.version == version)
-        .order_by(AuditEventRecord.created_at.desc())
-        .limit(20)
-    )
-    return AgentDetailResponse(
-        asset=to_response(asset_record),
-        agent_card=AgentCardView.model_validate(detail.agent_card),
-        dependencies=[
-            AssetDependency.model_validate(item) for item in detail.dependencies
-        ],
-        controls=[
-            GovernanceControl.model_validate(item) for item in detail.controls
-        ],
-        health=AgentHealth(
-            status=detail.health_status,
-            latency_ms=detail.health_latency_ms,
-            last_checked_at=detail.last_checked_at,
-        ),
-        version_history=[to_response(item) for item in versions],
-        audit_events=[
-            AuditEvent.model_validate(item, from_attributes=True)
-            for item in audit_records
-        ],
-    )
-
-
-def transition_asset(
-    session: Session,
-    *,
-    asset_id: str,
-    version: str,
-    target_state: GovernanceState,
-    note: str,
-    actor: CurrentUser,
-) -> AgentDetailResponse | None:
-    record = session.get(AssetRecord, (asset_id, version))
-    if not record:
-        return None
-    previous_state = record.governance_state
-    record.governance_state = target_state.value
-    record.updated_at = datetime.now(UTC)
-    session.add(
-        AuditEventRecord(
-            event_id=str(uuid4()),
-            asset_id=asset_id,
-            version=version,
-            action="governance.state.changed",
-            actor_subject=actor.subject,
-            actor_email=actor.email,
-            detail=f"{previous_state} -> {target_state.value}: {note}",
-        )
-    )
-    session.commit()
-    return get_agent_detail(session, asset_id, version)
-
-
 def list_assets(
     session: Session,
     *,
@@ -216,4 +125,3 @@ def dashboard_summary(session: Session) -> DashboardSummary:
         high_risk_assets=risks.get("high", 0) + risks.get("unacceptable", 0),
         by_type=by_type,
     )
-

@@ -292,7 +292,7 @@ def test_mcp_gateway_allows_registered_tool_and_audits_result(
         }
 
     monkeypatch.setattr(
-        "control_plane_api.app.invoke_mcp_tool",
+        "control_plane_api.routers.mcp_gateway.invoke_mcp_tool",
         fixture_call,
     )
     response = client.post(

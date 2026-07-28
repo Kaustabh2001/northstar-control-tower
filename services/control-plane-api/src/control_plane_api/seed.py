@@ -22,7 +22,7 @@ from .models import (
     RuntimeEventRecord,
     WorkflowRunRecord,
 )
-from .repository import create_asset
+from .registry.service import create_asset
 
 
 def seed_demo_assets(session_factory: sessionmaker[Session]) -> None:

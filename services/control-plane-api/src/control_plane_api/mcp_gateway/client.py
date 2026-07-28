@@ -20,10 +20,7 @@ async def discover_mcp_server(endpoint: str) -> dict[str, Any]:
             "reachable": True,
             "endpoint": endpoint,
             "protocol_version": initialized.protocolVersion,
-            "server": initialized.serverInfo.model_dump(
-                mode="json",
-                by_alias=True,
-            ),
+            "server": initialized.serverInfo.model_dump(mode="json", by_alias=True),
             "capabilities": initialized.capabilities.model_dump(
                 mode="json",
                 by_alias=True,
