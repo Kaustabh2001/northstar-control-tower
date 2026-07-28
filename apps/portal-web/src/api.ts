@@ -2,6 +2,7 @@ import { getAccessToken } from "./auth";
 import type {
   AgentDetail,
   Asset,
+  AssetDetail,
   AssetType,
   DashboardSummary,
   GovernanceState,
@@ -51,6 +52,17 @@ export function getAgentDetail(
   version: string,
 ): Promise<AgentDetail> {
   return request(`/api/v1/agents/${encodeURIComponent(assetId)}/versions/${encodeURIComponent(version)}`);
+}
+
+export function getAssetDetail(
+  assetId: string,
+  version: string,
+  refreshLive = false,
+): Promise<AssetDetail> {
+  const live = refreshLive ? "?refresh_live=true" : "";
+  return request(
+    `/api/v1/assets/${encodeURIComponent(assetId)}/versions/${encodeURIComponent(version)}/detail${live}`,
+  );
 }
 
 export function transitionAgent(

@@ -36,6 +36,7 @@ services:
       NORTHSTAR_AUTH_ISSUER: http://localhost:8080/realms/northstar
       NORTHSTAR_AUTH_JWKS_URL: http://keycloak:8080/realms/northstar/protocol/openid-connect/certs
       NORTHSTAR_AUTH_AUDIENCE: northstar-api
+      NORTHSTAR_FIXTURE_MCP_URL: http://fixture-mcp:8000/mcp
     ports:
       - "8000:8000"
     depends_on:
@@ -62,6 +63,14 @@ services:
     depends_on:
       api:
         condition: service_healthy
+
+  fixture-mcp:
+    profiles: ["tools"]
+    build:
+      context: ../..
+      dockerfile: services/fixture-mcp/Dockerfile
+    ports:
+      - "8090:8000"
 
 volumes:
   northstar-postgres:

@@ -10,7 +10,12 @@ from northstar_contracts import (
     RiskLevel,
 )
 
-from .models import AgentDetailRecord, AssetRecord, AuditEventRecord
+from .models import (
+    AgentDetailRecord,
+    AssetDetailRecord,
+    AssetRecord,
+    AuditEventRecord,
+)
 from .repository import create_asset
 
 
@@ -84,10 +89,8 @@ def seed_demo_assets(session_factory: sessionmaker[Session]) -> None:
         for asset in assets:
             if not has_assets:
                 create_asset(session, asset)
-        if session.get(AgentDetailRecord, ("agent.policy-risk", "0.4.0")):
-            return
-        session.add(
-            AgentDetailRecord(
+        if not session.get(AgentDetailRecord, ("agent.policy-risk", "0.4.0")):
+            session.add(AgentDetailRecord(
                 asset_id="agent.policy-risk",
                 version="0.4.0",
                 agent_card={
@@ -164,10 +167,8 @@ def seed_demo_assets(session_factory: sessionmaker[Session]) -> None:
                     },
                 ],
                 health_status="not_checked",
-            )
-        )
-        session.add(
-            AuditEventRecord(
+            ))
+            session.add(AuditEventRecord(
                 event_id=str(uuid4()),
                 asset_id="agent.policy-risk",
                 version="0.4.0",
@@ -175,7 +176,85 @@ def seed_demo_assets(session_factory: sessionmaker[Session]) -> None:
                 actor_subject="system-seed",
                 actor_email="platform@northstar.local",
                 detail="Agent version registered from the local demonstration catalog.",
-            )
-        )
+            ))
+
+        detail_records = [
+            AssetDetailRecord(
+                asset_id="dataset.access-tickets",
+                version="2026.7.0",
+                detail_kind="dataset",
+                payload={
+                    "source": {
+                        "system": "Synthetic service-management export",
+                        "format": "Parquet",
+                        "refresh_cadence": "Weekly",
+                        "record_count": 12840,
+                    },
+                    "classification": "confidential",
+                    "license": "Internal evaluation only",
+                    "retention": "180 days; derived aggregates retained for 13 months",
+                    "schema": [
+                        {"name": "ticket_id", "type": "string", "privacy": "internal_identifier", "nullable": False},
+                        {"name": "summary", "type": "string", "privacy": "sensitive_free_text", "nullable": False},
+                        {"name": "requester_role", "type": "string", "privacy": "quasi_identifier", "nullable": True},
+                        {"name": "category", "type": "string", "privacy": "non_personal", "nullable": False},
+                        {"name": "resolution_code", "type": "string", "privacy": "non_personal", "nullable": True},
+                        {"name": "opened_at", "type": "timestamp", "privacy": "non_personal", "nullable": False},
+                    ],
+                    "quality": {
+                        "overall_score": 91.4,
+                        "completeness": 96.8,
+                        "duplicate_rate": 0.7,
+                        "label_agreement": 88.2,
+                        "freshness_days": 4,
+                        "last_validation": "2026-07-24T09:30:00Z",
+                    },
+                    "lineage": {
+                        "sources": ["synthetic-ticket-generator", "approved-policy-taxonomy"],
+                        "transformations": ["PII redaction", "taxonomy normalization", "stratified split"],
+                        "consumers": ["model.ticket-intent:1.3.0", "agent.policy-risk:0.4.0"],
+                    },
+                    "controls": [
+                        {"name": "Free-text PII scan", "status": "passed"},
+                        {"name": "Training-serving skew", "status": "passed"},
+                        {"name": "Minority class coverage", "status": "attention"},
+                    ],
+                },
+            ),
+            AssetDetailRecord(
+                asset_id="mcp.keycloak",
+                version="0.2.0",
+                detail_kind="mcp_server",
+                payload={
+                    "endpoint": "http://fixture-mcp:8000/mcp",
+                    "local_endpoint": "http://localhost:8090/mcp",
+                    "transport": "streamable_http",
+                    "protocol": "MCP",
+                    "protocol_version": "2025-11-25",
+                    "auth": {
+                        "method": "gateway_service_identity",
+                        "required_roles": ["operator", "reviewer"],
+                        "secret_storage": "environment-backed development secret",
+                    },
+                    "policy": {
+                        "network_zone": "local_control_plane",
+                        "default_action": "deny",
+                        "human_approval_for": ["elevated_access", "role_assignment"],
+                    },
+                    "declared_tools": [
+                        "lookup_access_policy",
+                        "validate_entitlement",
+                        "submit_access_decision",
+                    ],
+                    "dependencies": ["Keycloak", "MCP gateway (planned)", "audit event store"],
+                },
+            ),
+        ]
+        for detail_record in detail_records:
+            if not session.get(
+                AssetDetailRecord,
+                (detail_record.asset_id, detail_record.version),
+            ):
+                session.add(detail_record)
         session.commit()
 

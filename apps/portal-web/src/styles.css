@@ -74,6 +74,7 @@ button { font: inherit; }
 .content-card .MuiDivider-root { margin: 19px 0; }
 .metadata-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 18px; }
 .metadata-grid.top-gap { margin-top: 22px; }
+.metric-detail-grid { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 20px; margin-top: 22px; }
 .label-value > span, .label-value > strong { display: block; }
 .label-value > span { margin-bottom: 4px; color: #6c7771; font-size: .62rem; font-weight: 750; letter-spacing: .04em; text-transform: uppercase; }
 .label-value > strong { color: #1d2c25; font-size: .77rem; font-weight: 800; overflow-wrap: anywhere; text-transform: capitalize; }
@@ -85,6 +86,8 @@ button { font: inherit; }
 .skill-card { padding: 14px; border: 1px solid #e0e3dc; border-radius: 9px; background: #fafbf7; }
 .skill-card > strong { font-size: .78rem; font-weight: 850; }
 .skill-card p { margin: 5px 0 10px; color: #637068; font-size: .69rem; line-height: 1.5; }
+.tool-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 12px; margin-top: 22px; }
+.schema-code { max-height: 260px; overflow: auto; margin: 12px 0 0; padding: 12px; border-radius: 8px; background: #10221b; color: #d8e8df; font-size: .64rem; line-height: 1.5; }
 .capability-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
 .capability-row > strong { font-size: .7rem; text-transform: capitalize; }
 .dependency-list { display: grid; gap: 10px; margin-top: 22px; }
@@ -114,6 +117,7 @@ button { font: inherit; }
   .stat-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .overview-grid { grid-template-columns: 1fr; }
   .detail-grid { grid-template-columns: 1fr; }
+  .metric-detail-grid { grid-template-columns: repeat(2, minmax(0,1fr)); }
 }
 @media (max-width: 760px) {
   .app-shell { grid-template-columns: 1fr; }
@@ -125,6 +129,7 @@ button { font: inherit; }
   .page-header > button { margin-top: 14px; }
   .user-summary { display: none; }
   .metadata-grid { grid-template-columns: 1fr; }
+  .metric-detail-grid, .tool-grid { grid-template-columns: 1fr; }
   .agent-hero { display: block; }
   .agent-avatar { margin-bottom: 14px; }
 }

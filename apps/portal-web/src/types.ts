@@ -107,3 +107,26 @@ export interface AgentDetail {
   }>;
   runtime_connected: boolean;
 }
+
+export interface AssetDetail {
+  asset: Asset;
+  detail_kind: string;
+  metadata: Record<string, any>;
+  version_history: Asset[];
+  audit_events: Array<{
+    event_id: string;
+    action: string;
+    actor_email: string;
+    detail: string;
+    created_at: string;
+  }>;
+  live_status: {
+    reachable: boolean;
+    endpoint: string;
+    protocol_version?: string;
+    server?: Record<string, any>;
+    capabilities?: Record<string, any>;
+    tools?: Array<Record<string, any>>;
+    error?: string;
+  } | null;
+}

@@ -7,12 +7,18 @@ from sqlalchemy.orm import Session
 from northstar_contracts import AssetRegistration, AssetType, GovernanceState
 
 from .auth import CurrentUser
-from .models import AgentDetailRecord, AssetRecord, AuditEventRecord
+from .models import (
+    AgentDetailRecord,
+    AssetDetailRecord,
+    AssetRecord,
+    AuditEventRecord,
+)
 from .schemas import (
     AgentCardView,
     AgentDetailResponse,
     AgentHealth,
     AssetDependency,
+    AssetDetailResponse,
     AssetResponse,
     AuditEvent,
     DashboardSummary,
@@ -41,6 +47,39 @@ def create_asset(session: Session, asset: AssetRegistration) -> AssetResponse:
 def get_asset(session: Session, asset_id: str, version: str) -> AssetResponse | None:
     record = session.get(AssetRecord, (asset_id, version))
     return to_response(record) if record else None
+
+
+def get_asset_detail(
+    session: Session,
+    asset_id: str,
+    version: str,
+) -> AssetDetailResponse | None:
+    asset_record = session.get(AssetRecord, (asset_id, version))
+    if not asset_record:
+        return None
+    detail = session.get(AssetDetailRecord, (asset_id, version))
+    versions = session.scalars(
+        select(AssetRecord)
+        .where(AssetRecord.asset_id == asset_id)
+        .order_by(AssetRecord.created_at.desc())
+    )
+    audit_records = session.scalars(
+        select(AuditEventRecord)
+        .where(AuditEventRecord.asset_id == asset_id)
+        .where(AuditEventRecord.version == version)
+        .order_by(AuditEventRecord.created_at.desc())
+        .limit(20)
+    )
+    return AssetDetailResponse(
+        asset=to_response(asset_record),
+        detail_kind=detail.detail_kind if detail else asset_record.asset_type,
+        metadata=detail.payload if detail else {},
+        version_history=[to_response(item) for item in versions],
+        audit_events=[
+            AuditEvent.model_validate(item, from_attributes=True)
+            for item in audit_records
+        ],
+    )
 
 
 def get_agent_detail(

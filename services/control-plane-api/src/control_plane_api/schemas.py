@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -85,6 +86,15 @@ class AgentDetailResponse(BaseModel):
     version_history: list[AssetResponse]
     audit_events: list[AuditEvent]
     runtime_connected: bool = False
+
+
+class AssetDetailResponse(BaseModel):
+    asset: AssetResponse
+    detail_kind: str
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    version_history: list[AssetResponse] = Field(default_factory=list)
+    audit_events: list[AuditEvent] = Field(default_factory=list)
+    live_status: dict[str, Any] | None = None
 
 
 class GovernanceTransitionRequest(BaseModel):
