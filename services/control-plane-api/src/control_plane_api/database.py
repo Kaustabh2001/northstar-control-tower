@@ -22,5 +22,9 @@ def build_session_factory(engine: Engine) -> sessionmaker[Session]:
 def get_session(request: Request) -> Generator[Session, None, None]:
     session_factory: sessionmaker[Session] = request.app.state.session_factory
     with session_factory() as session:
-        yield session
+        try:
+            yield session
+        except Exception:
+            session.rollback()
+            raise
 

@@ -1,12 +1,8 @@
-from datetime import UTC, datetime
-from uuid import uuid4
-
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from northstar_contracts import AssetType, GovernanceState
+from northstar_contracts import AssetType
 
-from ..auth import CurrentUser
 from ..models import AgentDetailRecord, AssetRecord, AuditEventRecord
 from ..registry.service import to_response
 from ..schemas import (
@@ -62,33 +58,3 @@ def get_agent_detail(
             for item in audit_records
         ],
     )
-
-
-def transition_asset(
-    session: Session,
-    *,
-    asset_id: str,
-    version: str,
-    target_state: GovernanceState,
-    note: str,
-    actor: CurrentUser,
-) -> AgentDetailResponse | None:
-    record = session.get(AssetRecord, (asset_id, version))
-    if not record:
-        return None
-    previous_state = record.governance_state
-    record.governance_state = target_state.value
-    record.updated_at = datetime.now(UTC)
-    session.add(
-        AuditEventRecord(
-            event_id=str(uuid4()),
-            asset_id=asset_id,
-            version=version,
-            action="governance.state.changed",
-            actor_subject=actor.subject,
-            actor_email=actor.email,
-            detail=f"{previous_state} -> {target_state.value}: {note}",
-        )
-    )
-    session.commit()
-    return get_agent_detail(session, asset_id, version)

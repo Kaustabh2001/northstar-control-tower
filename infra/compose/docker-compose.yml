@@ -37,6 +37,8 @@ services:
       NORTHSTAR_AUTH_JWKS_URL: http://keycloak:8080/realms/northstar/protocol/openid-connect/certs
       NORTHSTAR_AUTH_AUDIENCE: northstar-api
       NORTHSTAR_FIXTURE_MCP_URL: http://fixture-mcp:8000/mcp
+      NORTHSTAR_SCHEMA_MANAGEMENT: alembic
+      NORTHSTAR_SEED_DEMO: "true"
     ports:
       - "8000:8000"
     depends_on:

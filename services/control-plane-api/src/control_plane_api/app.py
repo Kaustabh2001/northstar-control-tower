@@ -1,5 +1,6 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+import os
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -11,21 +12,31 @@ from .routers import agents, governance, mcp_gateway, platform, registry, runtim
 from .seed import seed_demo_assets
 
 
-def create_app(engine: Engine | None = None, *, seed_demo: bool = True) -> FastAPI:
+def create_app(
+    engine: Engine | None = None,
+    *,
+    seed_demo: bool | None = None,
+) -> FastAPI:
     database_engine = engine or build_engine()
     session_factory = build_session_factory(database_engine)
+    should_seed = (
+        seed_demo
+        if seed_demo is not None
+        else os.getenv("NORTHSTAR_SEED_DEMO", "false").lower() == "true"
+    )
 
     @asynccontextmanager
     async def lifespan(application: FastAPI) -> AsyncIterator[None]:
-        Base.metadata.create_all(database_engine)
+        if os.getenv("NORTHSTAR_SCHEMA_MANAGEMENT", "create_all") == "create_all":
+            Base.metadata.create_all(database_engine)
         application.state.session_factory = session_factory
-        if seed_demo:
+        if should_seed:
             seed_demo_assets(session_factory)
         yield
 
     application = FastAPI(
         title="Northstar Control Plane",
-        version="0.5.0",
+        version="0.6.0",
         description="Governance API for A2A-ready agentic workflows.",
         lifespan=lifespan,
     )

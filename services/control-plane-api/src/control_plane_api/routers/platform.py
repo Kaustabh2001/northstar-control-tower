@@ -12,7 +12,7 @@ router = APIRouter(tags=["platform"])
 def health() -> dict[str, str]:
     return {
         "status": "ok",
-        "mode": os.getenv("NORTHSTAR_AUTH_MODE", "fixture"),
+        "mode": os.getenv("NORTHSTAR_AUTH_MODE", "keycloak"),
     }
 
 
@@ -22,5 +22,5 @@ def get_session_identity(
 ) -> SessionResponse:
     return SessionResponse(
         **user.model_dump(),
-        auth_mode=os.getenv("NORTHSTAR_AUTH_MODE", "fixture"),
+        auth_mode=os.getenv("NORTHSTAR_AUTH_MODE", "keycloak"),
     )

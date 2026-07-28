@@ -3,14 +3,34 @@ from sqlalchemy.orm import Session
 
 from ..auth import CurrentUser, require_roles
 from ..database import get_session
-from ..runtime.service import decide_human_review, run_detail, runtime_portfolio
+from ..runtime.service import (
+    decide_human_review,
+    run_detail,
+    runtime_portfolio,
+    start_dummy_run,
+)
 from ..schemas import (
     HumanReviewDecisionRequest,
     RunDetailResponse,
     RuntimePortfolio,
+    DummyRunRequest,
 )
 
 router = APIRouter(prefix="/api/v1/runtime", tags=["runtime"])
+
+
+@router.post("/dummy-runs", response_model=RunDetailResponse, status_code=201)
+def create_dummy_run(
+    request: DummyRunRequest,
+    session: Session = Depends(get_session),
+    user: CurrentUser = Depends(require_roles("operator", "admin")),
+) -> RunDetailResponse:
+    try:
+        return start_dummy_run(session, request=request, actor=user)
+    except LookupError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
 
 
 @router.get("", response_model=RuntimePortfolio)

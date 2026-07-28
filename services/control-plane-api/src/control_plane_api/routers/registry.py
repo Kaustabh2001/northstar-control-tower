@@ -34,6 +34,8 @@ def get_assets(
     asset_type: AssetType | None = None,
     governance_state: GovernanceState | None = None,
     query: str | None = Query(default=None, max_length=120),
+    offset: int = Query(default=0, ge=0),
+    limit: int = Query(default=50, ge=1, le=200),
     session: Session = Depends(get_session),
     _user: CurrentUser = Depends(require_roles("viewer")),
 ) -> list[AssetResponse]:
@@ -42,6 +44,8 @@ def get_assets(
         asset_type=asset_type,
         governance_state=governance_state,
         query=query,
+        offset=offset,
+        limit=limit,
     )
 
 
@@ -54,15 +58,20 @@ def get_assets(
 def register_asset(
     asset: AssetRegistration,
     session: Session = Depends(get_session),
-    _user: CurrentUser = Depends(require_roles("operator", "admin")),
+    user: CurrentUser = Depends(require_roles("operator", "admin")),
 ) -> AssetResponse:
     try:
-        return create_asset(session, asset)
+        return create_asset(session, asset, actor=user)
     except IntegrityError as error:
         session.rollback()
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="This asset version is already registered.",
+        ) from error
+    except ValueError as error:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(error),
         ) from error
 
 

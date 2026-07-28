@@ -12,6 +12,7 @@ import type {
   NewAsset,
   RunDetail,
   RuntimePortfolio,
+  DummyRunRequest,
 } from "./types";
 
 const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
@@ -102,6 +103,48 @@ export function decideApproval(
 
 export function getRuntimePortfolio(): Promise<RuntimePortfolio> {
   return request("/api/v1/runtime");
+}
+
+export function requestApproval(
+  assetId: string,
+  version: string,
+  targetState: GovernanceState,
+  note: string,
+): Promise<GovernanceApproval> {
+  return request(
+    `/api/v1/assets/${encodeURIComponent(assetId)}/versions/${encodeURIComponent(version)}/approvals`,
+    {
+      method: "POST",
+      body: JSON.stringify({ target_state: targetState, note }),
+    },
+  );
+}
+
+export function startDummyRun(input: DummyRunRequest): Promise<RunDetail> {
+  return request("/api/v1/runtime/dummy-runs", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function performEmergencyAction(
+  assetId: string,
+  version: string,
+  action: "suspend" | "rollback",
+  reason: string,
+  targetVersion?: string,
+): Promise<Asset> {
+  return request(
+    `/api/v1/assets/${encodeURIComponent(assetId)}/versions/${encodeURIComponent(version)}/emergency-action`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        action,
+        reason,
+        target_version: targetVersion ?? null,
+      }),
+    },
+  );
 }
 
 export function getRunDetail(runId: string): Promise<RunDetail> {

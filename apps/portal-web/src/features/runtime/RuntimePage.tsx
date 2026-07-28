@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Alert,
+  Button,
   Chip,
   Paper,
   Stack,
@@ -17,7 +18,9 @@ import {
   decideHumanReview,
   getRunDetail,
   getRuntimePortfolio,
+  startDummyRun,
 } from "../../api";
+import { useAuth } from "../../auth";
 import { PageHeader } from "../../shared/components";
 import type { HumanReview, WorkflowRun } from "../../types";
 import { ControlLoading, DecisionDialog } from "../control/shared";
@@ -44,6 +47,7 @@ function RunStatus({ status }: { status: string }) {
 }
 
 export function RuntimePage() {
+  const auth = useAuth();
   const queryClient = useQueryClient();
   const [selectedRun, setSelectedRun] = useState<string | null>(null);
   const [reviewDecision, setReviewDecision] = useState<{
@@ -73,6 +77,20 @@ export function RuntimePage() {
       queryClient.setQueryData(["run-detail", result.run.run_id], result);
     },
   });
+  const dummyRun = useMutation({
+    mutationFn: () =>
+      startDummyRun({
+        request_id: `DEMO-${Date.now().toString().slice(-6)}`,
+        requester: "Demo Employee",
+        application: "Finance Analytics",
+        entitlement: "Regional Export Admin",
+      }),
+    onSuccess: async (result) => {
+      setSelectedRun(result.run.run_id);
+      await queryClient.invalidateQueries({ queryKey: ["runtime"] });
+      queryClient.setQueryData(["run-detail", result.run.run_id], result);
+    },
+  });
   if (runtime.isPending) return <ControlLoading />;
   if (runtime.isError) return <Alert severity="error">{runtime.error.message}</Alert>;
   const pendingReviews = runtime.data.reviews.filter((review) => review.status === "pending");
@@ -92,6 +110,16 @@ export function RuntimePage() {
                 <Typography variant="body2" color="text.secondary">Persistent local run state and LangGraph-ready checkpoints.</Typography>
               </div>
               <Stack direction="row" spacing={1}>
+                {auth.hasRole("operator", "admin") && (
+                  <Button
+                    size="small"
+                    variant="contained"
+                    disabled={dummyRun.isPending}
+                    onClick={() => dummyRun.mutate()}
+                  >
+                    {dummyRun.isPending ? "Starting…" : "Start dummy run"}
+                  </Button>
+                )}
                 {Object.entries(runtime.data.status_counts).map(([status, count]) => (
                   <Chip key={status} size="small" label={`${status.replaceAll("_", " ")} ${count}`} />
                 ))}
@@ -111,6 +139,9 @@ export function RuntimePage() {
               </TableBody>
             </Table>
           </Paper>
+          <Alert severity="info" sx={{ mt: 2 }}>
+            Dummy runs validate the governance, A2A task, MCP boundary and human-review plumbing only. The final business workflow remains intentionally undecided.
+          </Alert>
           {detail.isPending && selectedRun && <ControlLoading />}
           {detail.data && <RunDetailPanel detail={detail.data} onClose={() => setSelectedRun(null)} />}
         </div>
