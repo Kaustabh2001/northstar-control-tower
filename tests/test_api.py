@@ -122,6 +122,63 @@ def test_agent_detail_exposes_a2a_and_governance_metadata(
     assert detail["runtime_connected"] is False
 
 
+def test_dataset_detail_exposes_schema_quality_and_lineage(
+    client: TestClient,
+) -> None:
+    response = client.get(
+        "/api/v1/assets/dataset.access-tickets/versions/2026.7.0/detail",
+        headers=VIEWER,
+    )
+
+    assert response.status_code == 200
+    detail = response.json()
+    assert detail["detail_kind"] == "dataset"
+    assert detail["metadata"]["quality"]["overall_score"] == 91.4
+    assert detail["metadata"]["schema"][1]["privacy"] == "sensitive_free_text"
+    assert "model.ticket-intent:1.3.0" in detail["metadata"]["lineage"]["consumers"]
+
+
+def test_mcp_detail_is_available_without_requiring_live_service(
+    client: TestClient,
+) -> None:
+    response = client.get(
+        "/api/v1/assets/mcp.keycloak/versions/0.2.0/detail",
+        headers=VIEWER,
+    )
+
+    assert response.status_code == 200
+    detail = response.json()
+    assert detail["metadata"]["transport"] == "streamable_http"
+    assert detail["metadata"]["declared_tools"] == [
+        "lookup_access_policy",
+        "validate_entitlement",
+        "submit_access_decision",
+    ]
+    assert detail["live_status"] is None
+
+
+def test_shared_detail_contract_covers_assets_without_specialized_metadata(
+    client: TestClient,
+) -> None:
+    response = client.get(
+        "/api/v1/assets/model.ticket-intent/versions/1.3.0/detail",
+        headers=VIEWER,
+    )
+
+    assert response.status_code == 200
+    detail = response.json()
+    assert detail["detail_kind"] == "model"
+    assert detail["metadata"] == {}
+
+
+def test_asset_detail_requires_authentication(client: TestClient) -> None:
+    response = client.get(
+        "/api/v1/assets/dataset.access-tickets/versions/2026.7.0/detail",
+    )
+
+    assert response.status_code == 401
+
+
 def test_operator_submits_agent_for_review_and_audit_is_recorded(
     client: TestClient,
 ) -> None:

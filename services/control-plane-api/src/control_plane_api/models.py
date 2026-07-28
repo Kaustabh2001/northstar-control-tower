@@ -50,6 +50,15 @@ class AgentDetailRecord(Base):
     )
 
 
+class AssetDetailRecord(Base):
+    __tablename__ = "asset_details"
+
+    asset_id: Mapped[str] = mapped_column(String(120), primary_key=True)
+    version: Mapped[str] = mapped_column(String(80), primary_key=True)
+    detail_kind: Mapped[str] = mapped_column(String(40), index=True)
+    payload: Mapped[dict] = mapped_column(JSON, default=dict)
+
+
 class AuditEventRecord(Base):
     __tablename__ = "audit_events"
 

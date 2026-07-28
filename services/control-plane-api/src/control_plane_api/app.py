@@ -12,17 +12,20 @@ from northstar_contracts import AssetRegistration, AssetType, GovernanceState
 
 from .auth import CurrentUser, get_current_user, require_roles
 from .database import build_engine, build_session_factory, get_session
+from .mcp_discovery import discover_mcp_server
 from .models import Base
 from .repository import (
     create_asset,
     dashboard_summary,
     get_agent_detail,
     get_asset,
+    get_asset_detail,
     list_assets,
     transition_asset,
 )
 from .schemas import (
     AgentDetailResponse,
+    AssetDetailResponse,
     AssetResponse,
     DashboardSummary,
     GovernanceTransitionRequest,
@@ -45,7 +48,7 @@ def create_app(engine: Engine | None = None, *, seed_demo: bool = True) -> FastA
 
     application = FastAPI(
         title="Northstar Control Plane",
-        version="0.3.0",
+        version="0.4.0",
         description="Governance API for A2A-ready agentic workflows.",
         lifespan=lifespan,
     )
@@ -145,6 +148,34 @@ def create_app(engine: Engine | None = None, *, seed_demo: bool = True) -> FastA
                 detail="Asset version not found.",
             )
         return asset
+
+    @application.get(
+        "/api/v1/assets/{asset_id}/versions/{version}/detail",
+        response_model=AssetDetailResponse,
+        tags=["registry"],
+    )
+    async def get_asset_version_detail(
+        asset_id: str,
+        version: str,
+        refresh_live: bool = False,
+        session: Session = Depends(get_session),
+        _user: CurrentUser = Depends(require_roles("viewer")),
+    ) -> AssetDetailResponse:
+        detail = get_asset_detail(session, asset_id, version)
+        if not detail:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Asset detail record not found.",
+            )
+        if refresh_live and detail.asset.asset_type == AssetType.MCP_SERVER:
+            endpoint = os.getenv(
+                "NORTHSTAR_FIXTURE_MCP_URL",
+                detail.metadata.get("local_endpoint")
+                or detail.metadata.get("endpoint", ""),
+            )
+            if endpoint:
+                detail.live_status = await discover_mcp_server(endpoint)
+        return detail
 
     @application.get(
         "/api/v1/agents/{asset_id}/versions/{version}",

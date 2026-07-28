@@ -37,6 +37,7 @@ import {
   registerAsset,
   transitionAgent,
 } from "./api";
+import { AssetDetailPage } from "./AssetDetailPage";
 import { authMode, useAuth } from "./auth";
 import type {
   AgentDetail,
@@ -46,7 +47,7 @@ import type {
   NewAsset,
 } from "./types";
 
-type Page = "overview" | "inventory" | "agent" | "lifecycle" | "runtime" | "security";
+type Page = "overview" | "inventory" | "agent" | "asset" | "lifecycle" | "runtime" | "security";
 type AssetFilter = AssetType | "all";
 type DetailTab = "overview" | "a2a" | "dependencies" | "governance" | "activity";
 
@@ -90,6 +91,16 @@ const initialAsset: NewAsset = {
 };
 
 function routeFromLocation(): RouteState {
+  const typedMatch = window.location.pathname.match(
+    /^\/assets\/([^/]+)\/([^/]+)\/versions\/([^/]+)$/,
+  );
+  if (typedMatch) {
+    return {
+      page: typedMatch[1] === "agent" ? "agent" : "asset",
+      assetId: decodeURIComponent(typedMatch[2]),
+      version: decodeURIComponent(typedMatch[3]),
+    };
+  }
   const match = window.location.pathname.match(
     /^\/assets\/([^/]+)\/versions\/([^/]+)$/,
   );
@@ -185,7 +196,7 @@ function Sidebar({
           <Box key={value}>
             <button
               className={
-                page === value || (value === "inventory" && page === "agent")
+                page === value || (value === "inventory" && ["agent", "asset"].includes(page))
                   ? "nav-button active"
                   : "nav-button"
               }
@@ -199,7 +210,7 @@ function Sidebar({
                   <button
                     key={type.value}
                     className={
-                      (page === "inventory" || page === "agent")
+                      (page === "inventory" || page === "agent" || page === "asset")
                       && assetFilter === type.value
                         ? "active"
                         : ""
@@ -333,7 +344,7 @@ function Inventory({
             ? "All AI assets"
             : assetTypes.find((type) => type.value === assetFilter)!.label
         }
-        description="Open an agent to inspect its A2A contract, controls, dependencies and decisions."
+        description="Open any version to inspect its contract, evidence, controls, lineage and decisions."
         action={<Button variant="contained" onClick={onRegister}>Register asset</Button>}
       />
       <Paper className="content-card">
@@ -374,13 +385,12 @@ function Inventory({
                   <TableRow
                     key={`${asset.asset_id}:${asset.version}`}
                     hover
-                    className={asset.asset_type === "agent" ? "clickable-row" : ""}
-                    tabIndex={asset.asset_type === "agent" ? 0 : -1}
-                    onClick={() => asset.asset_type === "agent" && onOpen(asset)}
+                    className="clickable-row"
+                    tabIndex={0}
+                    onClick={() => onOpen(asset)}
                     onKeyDown={(event) => {
                       if (
-                        asset.asset_type === "agent"
-                        && (event.key === "Enter" || event.key === " ")
+                        event.key === "Enter" || event.key === " "
                       ) onOpen(asset);
                     }}
                   >
@@ -767,7 +777,7 @@ function AgentDetailPage({
   );
 }
 
-function PlannedPage({ page }: { page: Exclude<Page, "overview" | "inventory" | "agent"> }) {
+function PlannedPage({ page }: { page: Exclude<Page, "overview" | "inventory" | "agent" | "asset"> }) {
   const copy = {
     lifecycle: ["Asset governance lifecycle", "Evidence approvals and portfolio transition queues build on the secured agent decisions now in place."],
     runtime: ["Runtime operations", "Workflow runs, LangGraph checkpoints, traces and human review are the next implementation slice."],
@@ -875,10 +885,14 @@ export function App() {
     setRoute({ page: "inventory" });
   }
   function openAsset(asset: Asset) {
-    const path = `/assets/${encodeURIComponent(asset.asset_id)}/versions/${encodeURIComponent(asset.version)}`;
+    const path = `/assets/${asset.asset_type}/${encodeURIComponent(asset.asset_id)}/versions/${encodeURIComponent(asset.version)}`;
     window.history.pushState({}, "", path);
-    setAssetFilter("agent");
-    setRoute({ page: "agent", assetId: asset.asset_id, version: asset.version });
+    setAssetFilter(asset.asset_type);
+    setRoute({
+      page: asset.asset_type === "agent" ? "agent" : "asset",
+      assetId: asset.asset_id,
+      version: asset.version,
+    });
   }
 
   if (auth.loading || !auth.authenticated) return <LoginScreen />;
@@ -925,8 +939,15 @@ export function App() {
               onBack={() => chooseAssetFilter("agent")}
             />
           )}
-          {!["overview", "inventory", "agent"].includes(route.page) && (
-            <PlannedPage page={route.page as Exclude<Page, "overview" | "inventory" | "agent">} />
+          {route.page === "asset" && route.assetId && route.version && (
+            <AssetDetailPage
+              assetId={route.assetId}
+              version={route.version}
+              onBack={chooseAssetFilter}
+            />
+          )}
+          {!["overview", "inventory", "agent", "asset"].includes(route.page) && (
+            <PlannedPage page={route.page as Exclude<Page, "overview" | "inventory" | "agent" | "asset">} />
           )}
         </div>
       </main>
