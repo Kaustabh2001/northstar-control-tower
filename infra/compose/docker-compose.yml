@@ -69,8 +69,8 @@ services:
     build:
       context: ../..
       dockerfile: services/fixture-mcp/Dockerfile
-    ports:
-      - "8090:8000"
+    expose:
+      - "8000"
 
 volumes:
   northstar-postgres:

@@ -34,10 +34,29 @@ profile:
 docker compose -f infra/compose/docker-compose.yml --profile tools up --build
 ```
 
-Its Streamable HTTP endpoint is `http://localhost:8090/mcp`. The control plane
-uses MCP initialize and list-tools requests to discover the live protocol
-version, server identity and input schemas shown on the MCP asset detail page.
-The fixture tools are deterministic and never mutate a real identity system.
+Its Streamable HTTP endpoint is available only on the Compose network at
+`http://fixture-mcp:8000/mcp`. The control plane uses MCP initialize and
+list-tools requests to discover the live protocol version, server identity and
+input schemas shown on the MCP asset detail page. The fixture tools are
+deterministic and never mutate a real identity system. No host port is
+published, preventing workflows or users from bypassing the gateway.
+
+## Control-plane demonstrations
+
+The seeded local database now includes:
+
+- evidence-gated governance approvals for every registered asset type;
+- four workflow runs covering running, waiting-for-human, failed and completed
+  states, with persistent stages, correlations and trace events;
+- one review task that can be approved or rejected by a reviewer;
+- a default-deny MCP gateway policy that evaluates identity, workflow run,
+  stage, tool allowlist and approved human evidence before forwarding a call.
+
+The Runtime and Security pages use deterministic records while remaining
+compatible with future LangGraph checkpoints, A2A task IDs and Langfuse trace
+IDs. The MCP fixture must still be reached through the control-plane gateway
+for governed invocations; its host port exists for protocol development and
+health testing only.
 
 The imported local accounts all use password `northstar`:
 

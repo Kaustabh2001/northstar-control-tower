@@ -6,7 +6,12 @@ import type {
   AssetType,
   DashboardSummary,
   GovernanceState,
+  GovernanceApproval,
+  GovernancePortfolio,
+  McpInvocation,
   NewAsset,
+  RunDetail,
+  RuntimePortfolio,
 } from "./types";
 
 const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
@@ -78,4 +83,42 @@ export function transitionAgent(
       body: JSON.stringify({ target_state: targetState, note }),
     },
   );
+}
+
+export function getGovernancePortfolio(): Promise<GovernancePortfolio> {
+  return request("/api/v1/governance");
+}
+
+export function decideApproval(
+  approvalId: string,
+  decision: "approve" | "reject",
+  note: string,
+): Promise<GovernanceApproval> {
+  return request(`/api/v1/governance/approvals/${approvalId}/decision`, {
+    method: "POST",
+    body: JSON.stringify({ decision, note }),
+  });
+}
+
+export function getRuntimePortfolio(): Promise<RuntimePortfolio> {
+  return request("/api/v1/runtime");
+}
+
+export function getRunDetail(runId: string): Promise<RunDetail> {
+  return request(`/api/v1/runtime/runs/${runId}`);
+}
+
+export function decideHumanReview(
+  reviewId: string,
+  decision: "approve" | "reject" | "request_changes",
+  rationale: string,
+): Promise<RunDetail> {
+  return request(`/api/v1/runtime/reviews/${reviewId}/decision`, {
+    method: "POST",
+    body: JSON.stringify({ decision, rationale }),
+  });
+}
+
+export function getMcpInvocations(): Promise<McpInvocation[]> {
+  return request("/api/v1/mcp-gateway/invocations");
 }

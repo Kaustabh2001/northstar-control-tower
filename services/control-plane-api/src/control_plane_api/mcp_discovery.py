@@ -40,3 +40,20 @@ async def discover_mcp_server(endpoint: str) -> dict[str, Any]:
             "endpoint": endpoint,
             "error": f"{type(error).__name__}: {error}",
         }
+
+
+async def invoke_mcp_tool(
+    endpoint: str,
+    tool_name: str,
+    arguments: dict[str, Any],
+) -> dict[str, Any]:
+    async with asyncio.timeout(10):
+        async with streamable_http_client(endpoint) as (
+            read_stream,
+            write_stream,
+            _,
+        ):
+            async with ClientSession(read_stream, write_stream) as session:
+                await session.initialize()
+                result = await session.call_tool(tool_name, arguments)
+    return result.model_dump(mode="json", by_alias=True, exclude_none=True)
