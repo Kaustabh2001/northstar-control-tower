@@ -1,8 +1,11 @@
+from uuid import uuid4
+
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from northstar_contracts import AssetRegistration, AssetType, GovernanceState
 
+from ..auth import CurrentUser
 from ..models import AssetDetailRecord, AssetRecord, AuditEventRecord
 from ..schemas import (
     AssetDetailResponse,
@@ -22,9 +25,33 @@ def to_response(record: AssetRecord) -> AssetResponse:
     return AssetResponse.model_validate(record)
 
 
-def create_asset(session: Session, asset: AssetRegistration) -> AssetResponse:
+def create_asset(
+    session: Session,
+    asset: AssetRegistration,
+    *,
+    actor: CurrentUser | None = None,
+) -> AssetResponse:
+    if actor and asset.governance_state not in {
+        GovernanceState.DISCOVERED,
+        GovernanceState.REGISTERED,
+    }:
+        raise ValueError(
+            "New asset versions must enter through discovered or registered state."
+        )
     record = AssetRecord(**asset.model_dump(mode="json"))
     session.add(record)
+    if actor:
+        session.add(
+            AuditEventRecord(
+                event_id=str(uuid4()),
+                asset_id=asset.asset_id,
+                version=asset.version,
+                action="registry.asset.registered",
+                actor_subject=actor.subject,
+                actor_email=actor.email,
+                detail=f"Registered {asset.asset_type.value} version {asset.version}.",
+            )
+        )
     session.commit()
     session.refresh(record)
     return to_response(record)
@@ -74,6 +101,8 @@ def list_assets(
     asset_type: AssetType | None = None,
     governance_state: GovernanceState | None = None,
     query: str | None = None,
+    offset: int = 0,
+    limit: int = 50,
 ) -> list[AssetResponse]:
     statement = select(AssetRecord)
     if asset_type:
@@ -91,7 +120,11 @@ def list_assets(
                 AssetRecord.owner.ilike(pattern),
             )
         )
-    statement = statement.order_by(AssetRecord.display_name, AssetRecord.version)
+    statement = (
+        statement.order_by(AssetRecord.display_name, AssetRecord.version)
+        .offset(offset)
+        .limit(limit)
+    )
     return [to_response(record) for record in session.scalars(statement)]
 
 

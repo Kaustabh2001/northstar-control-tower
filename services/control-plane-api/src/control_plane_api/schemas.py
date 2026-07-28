@@ -219,6 +219,19 @@ class HumanReviewDecisionRequest(BaseModel):
     rationale: str = Field(min_length=3, max_length=500)
 
 
+class DummyRunRequest(BaseModel):
+    request_id: str = Field(min_length=3, max_length=80)
+    requester: str = Field(min_length=2, max_length=120)
+    application: str = Field(min_length=2, max_length=120)
+    entitlement: str = Field(min_length=2, max_length=160)
+
+
+class EmergencyLifecycleRequest(BaseModel):
+    action: str = Field(pattern="^(suspend|rollback)$")
+    reason: str = Field(min_length=8, max_length=500)
+    target_version: str | None = Field(default=None, max_length=80)
+
+
 class McpToolInvocationRequest(BaseModel):
     server_asset_id: str = "mcp.keycloak"
     server_version: str = "0.2.0"

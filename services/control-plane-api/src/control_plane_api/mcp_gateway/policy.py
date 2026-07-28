@@ -2,7 +2,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..auth import CurrentUser
-from ..models import HumanReviewRecord, WorkflowRunRecord
+from ..models import AssetRecord, HumanReviewRecord, WorkflowRunRecord
 
 TOOL_POLICY = {
     "lookup_access_policy": {
@@ -24,10 +24,17 @@ def authorize_mcp_invocation(
     session: Session,
     *,
     tool_name: str,
+    server_asset_id: str,
+    server_version: str,
     run_id: str | None,
     stage_id: str | None,
     actor: CurrentUser,
 ) -> tuple[bool, str]:
+    server = session.get(AssetRecord, (server_asset_id, server_version))
+    if not server or server.asset_type != "mcp_server":
+        return False, "MCP server version is not registered."
+    if server.governance_state not in {"shadow", "canary", "production"}:
+        return False, "MCP server is not approved for runtime invocation."
     policy = TOOL_POLICY.get(tool_name)
     if not policy:
         return False, "Tool is not registered in the gateway allowlist."

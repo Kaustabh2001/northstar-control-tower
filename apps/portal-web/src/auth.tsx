@@ -11,7 +11,7 @@ import type { ReactNode } from "react";
 import type { SessionUser } from "./types";
 
 const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
-const AUTH_MODE = import.meta.env.VITE_AUTH_MODE ?? "fixture";
+const AUTH_MODE = import.meta.env.VITE_AUTH_MODE ?? "keycloak";
 const KEYCLOAK_URL = import.meta.env.VITE_KEYCLOAK_URL ?? "http://localhost:8080";
 const REALM = "northstar";
 const CLIENT_ID = "northstar-portal";
@@ -24,6 +24,7 @@ interface TokenSet {
   refresh_token?: string;
   id_token?: string;
   expires_in?: number;
+  expires_at?: number;
 }
 
 interface AuthContextValue {
@@ -54,9 +55,39 @@ function readTokens(): TokenSet | null {
   return value ? (JSON.parse(value) as TokenSet) : null;
 }
 
+function storeTokens(tokens: TokenSet): void {
+  sessionStorage.setItem(
+    TOKEN_KEY,
+    JSON.stringify({
+      ...tokens,
+      expires_at: Date.now() + Math.max(30, tokens.expires_in ?? 300) * 1000,
+    }),
+  );
+}
+
 export function getAccessToken(): string | null {
   if (AUTH_MODE === "fixture") return "fixture-admin";
   return readTokens()?.access_token ?? null;
+}
+
+async function refreshTokens(): Promise<boolean> {
+  const current = readTokens();
+  if (!current?.refresh_token) return false;
+  const response = await fetch(
+    `${KEYCLOAK_URL}/realms/${REALM}/protocol/openid-connect/token`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        grant_type: "refresh_token",
+        client_id: CLIENT_ID,
+        refresh_token: current.refresh_token,
+      }),
+    },
+  );
+  if (!response.ok) return false;
+  storeTokens((await response.json()) as TokenSet);
+  return true;
 }
 
 async function exchangeCode(code: string): Promise<void> {
@@ -78,7 +109,7 @@ async function exchangeCode(code: string): Promise<void> {
     },
   );
   if (!response.ok) throw new Error("Keycloak could not complete sign-in.");
-  sessionStorage.setItem(TOKEN_KEY, JSON.stringify(await response.json()));
+  storeTokens((await response.json()) as TokenSet);
   sessionStorage.removeItem(VERIFIER_KEY);
   sessionStorage.removeItem(STATE_KEY);
 }
@@ -154,7 +185,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     void initialise();
   }, [loadUser]);
 
+  useEffect(() => {
+    if (AUTH_MODE !== "keycloak" || !user) return;
+    const refresh = async () => {
+      const tokens = readTokens();
+      if (!tokens?.expires_at || tokens.expires_at - Date.now() > 60_000) return;
+      if (!(await refreshTokens())) {
+        sessionStorage.removeItem(TOKEN_KEY);
+        setUser(null);
+      }
+    };
+    const timer = window.setInterval(() => void refresh(), 30_000);
+    return () => window.clearInterval(timer);
+  }, [user]);
+
   const logout = useCallback(() => {
+    const idToken = readTokens()?.id_token;
     sessionStorage.removeItem(TOKEN_KEY);
     setUser(null);
     if (AUTH_MODE === "keycloak") {
@@ -162,6 +208,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         client_id: CLIENT_ID,
         post_logout_redirect_uri: `${window.location.origin}/`,
       });
+      if (idToken) params.set("id_token_hint", idToken);
       window.location.assign(
         `${KEYCLOAK_URL}/realms/${REALM}/protocol/openid-connect/logout?${params}`,
       );

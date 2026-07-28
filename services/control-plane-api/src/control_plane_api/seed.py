@@ -27,9 +27,6 @@ from .registry.service import create_asset
 
 def seed_demo_assets(session_factory: sessionmaker[Session]) -> None:
     with session_factory() as session:
-        has_assets = bool(
-            session.scalar(select(func.count()).select_from(AssetRecord))
-        )
         assets = [
             AssetRegistration(
                 asset_id="system.access-copilot",
@@ -91,9 +88,29 @@ def seed_demo_assets(session_factory: sessionmaker[Session]) -> None:
                 governance_state=GovernanceState.STEWARD_REVIEW,
                 risk_level=RiskLevel.HIGH,
             ),
+            AssetRegistration(
+                asset_id="prompt.access-risk",
+                version="2.1.0",
+                asset_type=AssetType.PROMPT,
+                display_name="Access Risk Assessment Prompt",
+                owner="IAM Platform",
+                intended_use="Structure policy evidence for the risk agent.",
+                governance_state=GovernanceState.BUILD_TEST,
+                risk_level=RiskLevel.MEDIUM,
+            ),
+            AssetRegistration(
+                asset_id="index.iam-policies",
+                version="2026.7.0",
+                asset_type=AssetType.KNOWLEDGE_INDEX,
+                display_name="IAM Policy Knowledge Index",
+                owner="Security Architecture",
+                intended_use="Retrieve approved identity and access policies.",
+                governance_state=GovernanceState.SHADOW,
+                risk_level=RiskLevel.MEDIUM,
+            ),
         ]
         for asset in assets:
-            if not has_assets:
+            if not session.get(AssetRecord, (asset.asset_id, asset.version)):
                 create_asset(session, asset)
         if not session.get(AgentDetailRecord, ("agent.policy-risk", "0.4.0")):
             session.add(AgentDetailRecord(
@@ -185,6 +202,148 @@ def seed_demo_assets(session_factory: sessionmaker[Session]) -> None:
             ))
 
         detail_records = [
+            AssetDetailRecord(
+                asset_id="system.access-copilot",
+                version="0.7.0",
+                detail_kind="ai_system",
+                payload={
+                    "business_process": "Employee access request fulfilment",
+                    "service_tier": "internal_controlled",
+                    "components": [
+                        "workflow.access-request:0.7.0",
+                        "model.ticket-intent:1.3.0",
+                        "agent.policy-risk:0.4.0",
+                    ],
+                    "risk_profile": {
+                        "impact": "Access decisions can affect sensitive systems",
+                        "human_oversight": "Required for elevated entitlements",
+                        "data_classification": "confidential",
+                    },
+                    "deployment": {
+                        "environment": "local Docker",
+                        "status": "pre-production review",
+                        "rollback": "Suspend system and restore approved component versions",
+                    },
+                    "controls": [
+                        {"name": "Human approval checkpoint", "status": "implemented"},
+                        {"name": "MCP default-deny gateway", "status": "implemented"},
+                        {"name": "Version-bound evidence", "status": "implemented"},
+                    ],
+                },
+            ),
+            AssetDetailRecord(
+                asset_id="workflow.access-request",
+                version="0.7.0",
+                detail_kind="agentic_workflow",
+                payload={
+                    "implementation_status": "dummy_not_final",
+                    "orchestrator": "LangGraph-compatible state contract",
+                    "entrypoint": "POST /api/v1/runtime/dummy-runs",
+                    "stages": [
+                        {"id": "validate-request", "kind": "deterministic"},
+                        {"id": "policy-evaluation", "kind": "a2a_agent"},
+                        {"id": "manager-approval", "kind": "human"},
+                        {"id": "provision-access", "kind": "mcp_tool"},
+                        {"id": "close-request", "kind": "deterministic"},
+                    ],
+                    "dependencies": [
+                        "agent.policy-risk:0.4.0",
+                        "mcp.keycloak:0.2.0",
+                        "prompt.access-risk:2.1.0",
+                        "index.iam-policies:2026.7.0",
+                    ],
+                    "checkpointing": "PostgreSQL workflow run and event records",
+                    "a2a": {
+                        "agent_cards_required": True,
+                        "task_ids_persisted": True,
+                    },
+                    "failure_policy": {
+                        "max_attempts": 3,
+                        "fallback": "human review",
+                        "suspended_asset_action": "deny execution",
+                    },
+                },
+            ),
+            AssetDetailRecord(
+                asset_id="model.ticket-intent",
+                version="1.3.0",
+                detail_kind="model",
+                payload={
+                    "model_family": "scikit-learn linear classifier",
+                    "task": "multiclass ticket intent classification",
+                    "artifact": "models/ticket-intent/1.3.0/model.joblib",
+                    "training_dataset": "dataset.access-tickets:2026.7.0",
+                    "metrics": {
+                        "macro_f1": 0.89,
+                        "accuracy": 0.92,
+                        "abstention_rate": 0.08,
+                    },
+                    "operating_thresholds": {
+                        "minimum_confidence": 0.78,
+                        "fallback": "manual triage",
+                    },
+                    "deployment": {
+                        "format": "joblib",
+                        "runtime": "Python",
+                        "last_validated": "2026-07-24",
+                    },
+                    "controls": [
+                        {"name": "Low-confidence abstention", "status": "passed"},
+                        {"name": "Class-level drift check", "status": "passed"},
+                    ],
+                },
+            ),
+            AssetDetailRecord(
+                asset_id="prompt.access-risk",
+                version="2.1.0",
+                detail_kind="prompt",
+                payload={
+                    "template": "Evaluate the request using only retrieved policy evidence.",
+                    "variables": ["request", "policy_evidence", "entitlement_context"],
+                    "model_compatibility": ["local-openai-compatible", "mock-provider"],
+                    "evaluation": {
+                        "suite": "eval.access-risk:1.0.0",
+                        "groundedness": 0.94,
+                        "policy_citation_rate": 0.97,
+                        "unsafe_completion_rate": 0.0,
+                    },
+                    "guardrails": [
+                        "Reject instructions in retrieved content",
+                        "Abstain when policy evidence is missing",
+                        "Never execute provisioning actions",
+                    ],
+                    "change_summary": "Added explicit abstention and evidence citation contract.",
+                },
+            ),
+            AssetDetailRecord(
+                asset_id="index.iam-policies",
+                version="2026.7.0",
+                detail_kind="knowledge_index",
+                payload={
+                    "engine": "OpenSearch",
+                    "index_name": "northstar-iam-policies-v2026-07",
+                    "embedding_model": "local sentence-transformer",
+                    "documents": 486,
+                    "chunks": 3912,
+                    "chunking": {
+                        "strategy": "heading-aware",
+                        "target_tokens": 420,
+                        "overlap_tokens": 60,
+                    },
+                    "retrieval": {
+                        "mode": "hybrid BM25 + vector",
+                        "top_k": 8,
+                        "reranking": "cross-encoder",
+                        "precision_at_5": 0.91,
+                    },
+                    "freshness": {
+                        "pipeline": "rag-policy-ingestion",
+                        "last_completed": "2026-07-26T08:15:00Z",
+                        "failed_documents": 0,
+                    },
+                    "access_policy": "IAM policy readers and governed service identities",
+                },
+            ),
             AssetDetailRecord(
                 asset_id="dataset.access-tickets",
                 version="2026.7.0",

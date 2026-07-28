@@ -17,7 +17,7 @@ import {
   Typography,
 } from "@mui/material";
 
-import { getAgentDetail, transitionAgent } from "../../../api";
+import { getAgentDetail, requestApproval } from "../../../api";
 import { useAuth } from "../../../auth";
 import { LabelValue, LoadingPanel, StatusChip } from "../../../shared/components";
 import type { AgentDetail, GovernanceState } from "../../../types";
@@ -130,9 +130,8 @@ function Governance({
         <Typography className="section-heading" variant="h6">Lifecycle decision</Typography>
         <StatusChip asset={detail.asset} />
         <Typography variant="body2" color="text.secondary">Every transition is role-checked by the API and written to the audit trail.</Typography>
-        {auth.hasRole("operator", "admin") && detail.asset.governance_state !== "steward_review" && <Button variant="contained" onClick={() => onTransition("steward_review", "Submit for steward review")}>Submit for steward review</Button>}
-        {auth.hasRole("reviewer", "admin") && detail.asset.governance_state === "steward_review" && <Button variant="contained" color="success" onClick={() => onTransition("shadow", "Approve for shadow operation")}>Approve for shadow</Button>}
-        {auth.hasRole("admin") && <Button variant="outlined" color="error" onClick={() => onTransition("retired", "Retire agent version")}>Retire version</Button>}
+        {auth.hasRole("operator", "admin") && detail.asset.governance_state === "build_test" && <Button variant="contained" onClick={() => onTransition("steward_review", "Request steward review")}>Request steward review</Button>}
+        {detail.asset.governance_state === "steward_review" && <Alert severity="info">A reviewer must decide the pending request in Lifecycle &amp; Approvals.</Alert>}
       </Paper>
     </div>
   );
@@ -196,7 +195,7 @@ export function AgentDetailPage({
   const queryClient = useQueryClient();
   const detail = useQuery({ queryKey: ["agent", assetId, version], queryFn: () => getAgentDetail(assetId, version) });
   const mutation = useMutation({
-    mutationFn: ({ state, note }: { state: GovernanceState; note: string }) => transitionAgent(assetId, version, state, note),
+    mutationFn: ({ state, note }: { state: GovernanceState; note: string }) => requestApproval(assetId, version, state, note),
     onSuccess: async () => {
       setTransition(null);
       await Promise.all([

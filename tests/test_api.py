@@ -8,16 +8,18 @@ from control_plane_api.app import create_app
 VIEWER = {"Authorization": "Bearer fixture-viewer"}
 OPERATOR = {"Authorization": "Bearer fixture-operator"}
 REVIEWER = {"Authorization": "Bearer fixture-reviewer"}
+ADMIN = {"Authorization": "Bearer fixture-admin"}
 
 
 @pytest.fixture
-def client() -> TestClient:
+def client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
+    monkeypatch.setenv("NORTHSTAR_AUTH_MODE", "fixture")
     engine = create_engine(
         "sqlite://",
         connect_args={"check_same_thread": False},
         poolclass=StaticPool,
     )
-    with TestClient(create_app(engine)) as test_client:
+    with TestClient(create_app(engine, seed_demo=True)) as test_client:
         yield test_client
 
 
@@ -32,7 +34,7 @@ def test_dashboard_uses_persisted_registry_data(client: TestClient) -> None:
     response = client.get("/api/v1/dashboard", headers=VIEWER)
 
     assert response.status_code == 200
-    assert response.json()["total_assets"] == 6
+    assert response.json()["total_assets"] == 8
     assert response.json()["awaiting_review"] == 2
     assert response.json()["model_provider"] == "not_configured"
 
@@ -81,6 +83,27 @@ def test_duplicate_asset_version_is_conflict(client: TestClient) -> None:
     response = client.post("/api/v1/assets", json=existing, headers=OPERATOR)
 
     assert response.status_code == 409
+
+
+def test_registration_cannot_bypass_lifecycle_into_production(
+    client: TestClient,
+) -> None:
+    response = client.post(
+        "/api/v1/assets",
+        headers=OPERATOR,
+        json={
+            "asset_id": "model.lifecycle-bypass",
+            "version": "1.0.0",
+            "asset_type": "model",
+            "display_name": "Lifecycle Bypass",
+            "owner": "Test",
+            "intended_use": "Verify governance enforcement.",
+            "governance_state": "production",
+        },
+    )
+
+    assert response.status_code == 422
+    assert "must enter" in response.json()["detail"]
 
 
 def test_registry_requires_authentication(client: TestClient) -> None:
@@ -157,7 +180,7 @@ def test_mcp_detail_is_available_without_requiring_live_service(
     assert detail["live_status"] is None
 
 
-def test_shared_detail_contract_covers_assets_without_specialized_metadata(
+def test_model_detail_exposes_traditional_ml_metrics(
     client: TestClient,
 ) -> None:
     response = client.get(
@@ -168,7 +191,8 @@ def test_shared_detail_contract_covers_assets_without_specialized_metadata(
     assert response.status_code == 200
     detail = response.json()
     assert detail["detail_kind"] == "model"
-    assert detail["metadata"] == {}
+    assert detail["metadata"]["model_family"] == "scikit-learn linear classifier"
+    assert detail["metadata"]["metrics"]["macro_f1"] == 0.89
 
 
 def test_asset_detail_requires_authentication(client: TestClient) -> None:
@@ -295,6 +319,12 @@ def test_mcp_gateway_allows_registered_tool_and_audits_result(
         "control_plane_api.routers.mcp_gateway.invoke_mcp_tool",
         fixture_call,
     )
+    approval = client.post(
+        "/api/v1/governance/approvals/5cd59c92-9c44-46e7-8f03-7769518d9398/decision",
+        headers=REVIEWER,
+        json={"decision": "approve", "note": "Runtime invocation approved."},
+    )
+    assert approval.status_code == 200
     response = client.post(
         "/api/v1/mcp-gateway/invoke",
         headers=OPERATOR,
@@ -314,11 +344,67 @@ def test_mcp_gateway_allows_registered_tool_and_audits_result(
     assert audit[0]["result"]["isError"] is False
 
 
-def test_operator_submits_agent_for_review_and_audit_is_recorded(
+def test_unapproved_mcp_server_is_denied_before_network_call(
     client: TestClient,
 ) -> None:
     response = client.post(
-        "/api/v1/agents/agent.policy-risk/versions/0.4.0/governance-state",
+        "/api/v1/mcp-gateway/invoke",
+        headers=OPERATOR,
+        json={
+            "tool_name": "lookup_access_policy",
+            "arguments": {"application": "Finance", "entitlement": "Viewer"},
+        },
+    )
+
+    assert response.status_code == 403
+    assert "not approved" in response.json()["detail"]
+
+
+def test_operator_can_start_governed_dummy_run(client: TestClient) -> None:
+    response = client.post(
+        "/api/v1/runtime/dummy-runs",
+        headers=OPERATOR,
+        json={
+            "request_id": "DEMO-1001",
+            "requester": "Demo Employee",
+            "application": "Finance Analytics",
+            "entitlement": "Regional Export Admin",
+        },
+    )
+
+    assert response.status_code == 201
+    detail = response.json()
+    assert detail["run"]["status"] == "waiting_for_human"
+    assert detail["run"]["correlation"]["demo"] is True
+    assert detail["review"]["requested_action"]["request_id"] == "DEMO-1001"
+
+
+def test_admin_can_suspend_asset_and_action_is_audited(
+    client: TestClient,
+) -> None:
+    suspended = client.post(
+        "/api/v1/assets/model.ticket-intent/versions/1.3.0/emergency-action",
+        headers=ADMIN,
+        json={
+            "action": "suspend",
+            "reason": "Emergency validation failure detected.",
+        },
+    )
+    detail = client.get(
+        "/api/v1/assets/model.ticket-intent/versions/1.3.0/detail",
+        headers=VIEWER,
+    )
+
+    assert suspended.status_code == 200
+    assert suspended.json()["governance_state"] == "suspended"
+    assert detail.json()["audit_events"][0]["action"] == "governance.emergency.suspend"
+
+
+def test_operator_submits_agent_approval_request_and_audit_is_recorded(
+    client: TestClient,
+) -> None:
+    response = client.post(
+        "/api/v1/assets/agent.policy-risk/versions/0.4.0/approvals",
         headers=OPERATOR,
         json={
             "target_state": "steward_review",
@@ -326,28 +412,10 @@ def test_operator_submits_agent_for_review_and_audit_is_recorded(
         },
     )
 
-    assert response.status_code == 200
-    detail = response.json()
-    assert detail["asset"]["governance_state"] == "steward_review"
+    assert response.status_code == 201
+    assert response.json()["status"] == "pending"
+    detail = client.get(
+        "/api/v1/agents/agent.policy-risk/versions/0.4.0",
+        headers=VIEWER,
+    ).json()
     assert detail["audit_events"][0]["actor_email"] == "operator@northstar.local"
-
-
-def test_operator_cannot_approve_agent_to_shadow(client: TestClient) -> None:
-    response = client.post(
-        "/api/v1/agents/agent.policy-risk/versions/0.4.0/governance-state",
-        headers=OPERATOR,
-        json={"target_state": "shadow", "note": "Attempted approval."},
-    )
-
-    assert response.status_code == 403
-
-
-def test_reviewer_can_approve_agent_to_shadow(client: TestClient) -> None:
-    response = client.post(
-        "/api/v1/agents/agent.policy-risk/versions/0.4.0/governance-state",
-        headers=REVIEWER,
-        json={"target_state": "shadow", "note": "Controls verified."},
-    )
-
-    assert response.status_code == 200
-    assert response.json()["asset"]["governance_state"] == "shadow"

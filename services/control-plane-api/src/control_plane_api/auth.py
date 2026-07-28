@@ -68,7 +68,7 @@ def get_current_user(
     if not credentials:
         raise _unauthorized()
 
-    auth_mode = os.getenv("NORTHSTAR_AUTH_MODE", "fixture")
+    auth_mode = os.getenv("NORTHSTAR_AUTH_MODE", "keycloak")
     if auth_mode == "fixture":
         return _fixture_user(credentials.credentials)
 

@@ -1,11 +1,11 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ..auth import CurrentUser
-from ..models import HumanReviewRecord, RuntimeEventRecord, WorkflowRunRecord
+from ..models import AssetRecord, HumanReviewRecord, RuntimeEventRecord, WorkflowRunRecord
 from ..schemas import (
     HumanReviewView,
     RuntimeEventView,
@@ -13,6 +13,7 @@ from ..schemas import (
     RuntimeStage,
     RunDetailResponse,
     WorkflowRunView,
+    DummyRunRequest,
 )
 
 
@@ -127,3 +128,135 @@ def decide_human_review(
     )
     session.commit()
     return run_detail(session, run.run_id)
+
+
+def start_dummy_run(
+    session: Session,
+    *,
+    request: DummyRunRequest,
+    actor: CurrentUser,
+) -> RunDetailResponse:
+    workflow = session.get(AssetRecord, ("workflow.access-request", "0.7.0"))
+    if not workflow:
+        raise LookupError("Dummy workflow asset is not registered.")
+    if workflow.governance_state not in {"shadow", "canary", "production"}:
+        raise ValueError(
+            "Workflow must be approved for shadow, canary, or production execution."
+        )
+    run_id = str(uuid4())
+    review_id = str(uuid4())
+    now = datetime.now(UTC)
+    stages = [
+        {
+            "stage_id": "validate-request",
+            "display_name": "Validate request",
+            "status": "completed",
+            "kind": "deterministic",
+            "started_at": now.isoformat(),
+            "completed_at": now.isoformat(),
+            "attempt": 1,
+            "summary": "Required fields accepted by deterministic validation.",
+        },
+        {
+            "stage_id": "policy-evaluation",
+            "display_name": "Policy and risk evaluation",
+            "status": "completed",
+            "kind": "a2a_agent",
+            "started_at": now.isoformat(),
+            "completed_at": now.isoformat(),
+            "attempt": 1,
+            "summary": "Dummy A2A response: elevated entitlement requires review.",
+        },
+        {
+            "stage_id": "manager-approval",
+            "display_name": "Manager approval",
+            "status": "waiting_for_human",
+            "kind": "human",
+            "started_at": now.isoformat(),
+            "completed_at": None,
+            "attempt": 1,
+            "summary": "Paused at an explicit human checkpoint.",
+        },
+        {
+            "stage_id": "provision-access",
+            "display_name": "Provision approved access",
+            "status": "pending",
+            "kind": "mcp_tool",
+            "started_at": None,
+            "completed_at": None,
+            "attempt": 1,
+            "summary": None,
+        },
+        {
+            "stage_id": "close-request",
+            "display_name": "Close request",
+            "status": "pending",
+            "kind": "deterministic",
+            "started_at": None,
+            "completed_at": None,
+            "attempt": 1,
+            "summary": None,
+        },
+    ]
+    run = WorkflowRunRecord(
+        run_id=run_id,
+        workflow_asset_id=workflow.asset_id,
+        workflow_version=workflow.version,
+        status="waiting_for_human",
+        current_stage_id="manager-approval",
+        correlation={
+            "demo": True,
+            "request_id": request.request_id,
+            "a2a_agent_card": "/.well-known/agent.json",
+            "a2a_task_ids": [f"dummy-a2a-{run_id[:8]}"],
+            "mcp_request_ids": [],
+        },
+        stages=stages,
+        checkpoint_ref=f"postgres://checkpoints/{run_id}",
+        started_at=now,
+        updated_at=now,
+    )
+    session.add(run)
+    session.add(
+        HumanReviewRecord(
+            review_id=review_id,
+            run_id=run_id,
+            stage_id="manager-approval",
+            title=f"Review {request.application} access",
+            reason="Dummy policy evaluation classified this entitlement as elevated.",
+            policy_evidence=["DUMMY-POLICY-001", "Synthetic risk score: 72/100"],
+            requested_action=request.model_dump(),
+            status="pending",
+            requested_at=now,
+            expires_at=now + timedelta(hours=4),
+        )
+    )
+    for event_type, stage_id, payload in (
+        ("run.started", "validate-request", {"demo": True}),
+        ("stage.completed", "validate-request", {"validation": "passed"}),
+        (
+            "stage.completed",
+            "policy-evaluation",
+            {"transport": "a2a", "result": "human_review_required"},
+        ),
+        (
+            "run.waiting_for_human",
+            "manager-approval",
+            {"review_id": review_id},
+        ),
+    ):
+        session.add(
+            RuntimeEventRecord(
+                event_id=str(uuid4()),
+                run_id=run_id,
+                event_type=event_type,
+                stage_id=stage_id,
+                actor_id=actor.email,
+                payload=payload,
+                occurred_at=now,
+            )
+        )
+    session.commit()
+    detail = run_detail(session, run_id)
+    assert detail is not None
+    return detail

@@ -39,6 +39,8 @@ async def invoke_governed_mcp_tool(
     allowed, reason = authorize_mcp_invocation(
         session,
         tool_name=request.tool_name,
+        server_asset_id=request.server_asset_id,
+        server_version=request.server_version,
         run_id=request.run_id,
         stage_id=request.stage_id,
         actor=user,

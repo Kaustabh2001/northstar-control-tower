@@ -233,6 +233,13 @@ export interface RunDetail {
   review: HumanReview | null;
 }
 
+export interface DummyRunRequest {
+  request_id: string;
+  requester: string;
+  application: string;
+  entitlement: string;
+}
+
 export interface McpInvocation {
   request_id: string;
   server_asset_id: string;
