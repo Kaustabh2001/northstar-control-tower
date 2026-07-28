@@ -38,6 +38,7 @@ import {
   transitionAgent,
 } from "./api";
 import { AssetDetailPage } from "./AssetDetailPage";
+import { GovernancePage, RuntimePage, SecurityPage } from "./ControlPages";
 import { authMode, useAuth } from "./auth";
 import type {
   AgentDetail,
@@ -777,26 +778,6 @@ function AgentDetailPage({
   );
 }
 
-function PlannedPage({ page }: { page: Exclude<Page, "overview" | "inventory" | "agent" | "asset"> }) {
-  const copy = {
-    lifecycle: ["Asset governance lifecycle", "Evidence approvals and portfolio transition queues build on the secured agent decisions now in place."],
-    runtime: ["Runtime operations", "Workflow runs, LangGraph checkpoints, traces and human review are the next implementation slice."],
-    security: ["Security & privacy", "Keycloak identity is active; gateway enforcement and privacy events follow with ContextForge."],
-  }[page];
-  return (
-    <>
-      <PageHeader eyebrow="Next integration slice" title={copy[0]} description={copy[1]} />
-      <Paper className="planned-card">
-        <span>SECURED FOUNDATION</span>
-        <Typography className="strong-heading" variant="h5">The control plane has an accountable identity boundary.</Typography>
-        <Typography color="text.secondary">
-          This page will be populated only when its real event source and enforcement path are implemented.
-        </Typography>
-      </Paper>
-    </>
-  );
-}
-
 function RegisterDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const queryClient = useQueryClient();
   const [asset, setAsset] = useState<NewAsset>(initialAsset);
@@ -946,9 +927,9 @@ export function App() {
               onBack={chooseAssetFilter}
             />
           )}
-          {!["overview", "inventory", "agent", "asset"].includes(route.page) && (
-            <PlannedPage page={route.page as Exclude<Page, "overview" | "inventory" | "agent" | "asset">} />
-          )}
+          {route.page === "lifecycle" && <GovernancePage />}
+          {route.page === "runtime" && <RuntimePage />}
+          {route.page === "security" && <SecurityPage />}
         </div>
       </main>
       <RegisterDialog open={registerOpen} onClose={() => setRegisterOpen(false)} />

@@ -179,6 +179,141 @@ def test_asset_detail_requires_authentication(client: TestClient) -> None:
     assert response.status_code == 401
 
 
+def test_governance_portfolio_exposes_evidence_and_pending_approvals(
+    client: TestClient,
+) -> None:
+    response = client.get("/api/v1/governance", headers=VIEWER)
+
+    assert response.status_code == 200
+    portfolio = response.json()
+    assert len(portfolio["evidence"]) == 5
+    assert portfolio["approvals"][0]["asset_id"] == "mcp.keycloak"
+    assert portfolio["allowed_transitions"]["build_test"] == [
+        "steward_review",
+        "retired",
+    ]
+
+
+def test_operator_can_request_evidence_gated_asset_approval(
+    client: TestClient,
+) -> None:
+    response = client.post(
+        "/api/v1/assets/agent.policy-risk/versions/0.4.0/approvals",
+        headers=OPERATOR,
+        json={
+            "target_state": "steward_review",
+            "note": "Regression evidence is attached.",
+        },
+    )
+
+    assert response.status_code == 201
+    assert response.json()["status"] == "pending"
+
+
+def test_reviewer_approval_advances_generic_asset_lifecycle(
+    client: TestClient,
+) -> None:
+    response = client.post(
+        "/api/v1/governance/approvals/5cd59c92-9c44-46e7-8f03-7769518d9398/decision",
+        headers=REVIEWER,
+        json={"decision": "approve", "note": "Gateway controls verified."},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["current_state"] == "shadow"
+
+
+def test_runtime_portfolio_exposes_stage_progress_and_review_queue(
+    client: TestClient,
+) -> None:
+    response = client.get("/api/v1/runtime", headers=VIEWER)
+
+    assert response.status_code == 200
+    runtime = response.json()
+    assert len(runtime["runs"]) == 4
+    assert runtime["status_counts"]["waiting_for_human"] == 1
+    assert runtime["reviews"][0]["status"] == "pending"
+    assert len(runtime["runs"][0]["stages"]) == 5
+
+
+def test_reviewer_decision_resumes_paused_workflow(
+    client: TestClient,
+) -> None:
+    response = client.post(
+        "/api/v1/runtime/reviews/68101460-9d40-4b13-897f-142574567bb8/decision",
+        headers=REVIEWER,
+        json={"decision": "approve", "rationale": "Manager evidence verified."},
+    )
+
+    assert response.status_code == 200
+    detail = response.json()
+    assert detail["run"]["status"] == "running"
+    assert detail["run"]["current_stage_id"] == "provision-access"
+    assert detail["events"][-1]["event_type"] == "human.decision.recorded"
+
+
+def test_mcp_gateway_denies_unauthorised_tool_and_keeps_audit(
+    client: TestClient,
+) -> None:
+    denied = client.post(
+        "/api/v1/mcp-gateway/invoke",
+        headers=VIEWER,
+        json={
+            "tool_name": "validate_entitlement",
+            "arguments": {
+                "requester_role": "employee",
+                "application": "Finance",
+                "entitlement": "Viewer",
+            },
+            "run_id": "db2cb166-890b-4ca4-82bd-2e7de99b0e58",
+            "stage_id": "policy-evaluation",
+        },
+    )
+    audit = client.get("/api/v1/mcp-gateway/invocations", headers=VIEWER)
+
+    assert denied.status_code == 403
+    assert audit.status_code == 200
+    assert audit.json()[0]["decision"] == "denied"
+    assert audit.json()[0]["actor_email"] == "viewer@northstar.local"
+
+
+def test_mcp_gateway_allows_registered_tool_and_audits_result(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fixture_call(
+        endpoint: str,
+        tool_name: str,
+        arguments: dict,
+    ) -> dict:
+        return {
+            "content": [{"type": "text", "text": "fixture-policy"}],
+            "isError": False,
+        }
+
+    monkeypatch.setattr(
+        "control_plane_api.app.invoke_mcp_tool",
+        fixture_call,
+    )
+    response = client.post(
+        "/api/v1/mcp-gateway/invoke",
+        headers=OPERATOR,
+        json={
+            "tool_name": "lookup_access_policy",
+            "arguments": {
+                "application": "Finance",
+                "entitlement": "Viewer",
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["decision"] == "allowed"
+    audit = client.get("/api/v1/mcp-gateway/invocations", headers=VIEWER).json()
+    assert audit[0]["decision"] == "allowed"
+    assert audit[0]["result"]["isError"] is False
+
+
 def test_operator_submits_agent_for_review_and_audit_is_recorded(
     client: TestClient,
 ) -> None:

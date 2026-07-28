@@ -97,6 +97,160 @@ class AssetDetailResponse(BaseModel):
     live_status: dict[str, Any] | None = None
 
 
+class GovernanceEvidence(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    evidence_id: str
+    asset_id: str
+    version: str
+    evidence_type: str
+    title: str
+    status: str
+    reference: str
+    collected_by: str
+    created_at: datetime
+
+
+class GovernanceApproval(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    approval_id: str
+    asset_id: str
+    version: str
+    display_name: str
+    asset_type: str
+    current_state: str
+    target_state: str
+    status: str
+    requested_by: str
+    request_note: str
+    decided_by: str | None
+    decision_note: str | None
+    created_at: datetime
+    decided_at: datetime | None
+
+
+class GovernancePortfolio(BaseModel):
+    approvals: list[GovernanceApproval]
+    evidence: list[GovernanceEvidence]
+    state_counts: dict[str, int]
+    allowed_transitions: dict[str, list[str]]
+
+
+class ApprovalDecisionRequest(BaseModel):
+    decision: str = Field(pattern="^(approve|reject)$")
+    note: str = Field(min_length=3, max_length=500)
+
+
+class RuntimeStage(BaseModel):
+    stage_id: str
+    display_name: str
+    status: str
+    kind: str
+    started_at: str | None = None
+    completed_at: str | None = None
+    attempt: int = 1
+    summary: str | None = None
+
+
+class WorkflowRunView(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    run_id: str
+    workflow_asset_id: str
+    workflow_version: str
+    workflow_name: str
+    status: str
+    current_stage_id: str | None
+    correlation: dict[str, Any]
+    stages: list[RuntimeStage]
+    checkpoint_ref: str | None
+    error_code: str | None
+    error_summary: str | None
+    started_at: datetime
+    updated_at: datetime
+
+
+class RuntimeEventView(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    event_id: str
+    run_id: str
+    event_type: str
+    stage_id: str | None
+    actor_id: str
+    payload: dict[str, Any]
+    occurred_at: datetime
+
+
+class HumanReviewView(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    review_id: str
+    run_id: str
+    stage_id: str
+    title: str
+    reason: str
+    policy_evidence: list[str]
+    requested_action: dict[str, Any]
+    status: str
+    requested_at: datetime
+    expires_at: datetime
+    decided_by: str | None
+    decision: str | None
+    rationale: str | None
+    decided_at: datetime | None
+
+
+class RuntimePortfolio(BaseModel):
+    runs: list[WorkflowRunView]
+    reviews: list[HumanReviewView]
+    status_counts: dict[str, int]
+
+
+class RunDetailResponse(BaseModel):
+    run: WorkflowRunView
+    events: list[RuntimeEventView]
+    review: HumanReviewView | None = None
+
+
+class HumanReviewDecisionRequest(BaseModel):
+    decision: str = Field(pattern="^(approve|reject|request_changes)$")
+    rationale: str = Field(min_length=3, max_length=500)
+
+
+class McpToolInvocationRequest(BaseModel):
+    server_asset_id: str = "mcp.keycloak"
+    server_version: str = "0.2.0"
+    tool_name: str
+    arguments: dict[str, Any] = Field(default_factory=dict)
+    run_id: str | None = None
+    stage_id: str | None = None
+
+
+class McpToolInvocationResponse(BaseModel):
+    request_id: str
+    decision: str
+    reason: str
+    result: dict[str, Any] | None = None
+
+
+class McpInvocationView(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    request_id: str
+    server_asset_id: str
+    tool_name: str
+    run_id: str | None
+    stage_id: str | None
+    actor_email: str
+    decision: str
+    reason: str
+    arguments: dict[str, Any]
+    result: dict[str, Any] | None
+    created_at: datetime
+
+
 class GovernanceTransitionRequest(BaseModel):
     target_state: GovernanceState
     note: str = Field(min_length=3, max_length=500)

@@ -1,6 +1,7 @@
 import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from uuid import uuid4
 
 from fastapi import Depends, FastAPI, HTTPException, Query, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -12,8 +13,19 @@ from northstar_contracts import AssetRegistration, AssetType, GovernanceState
 
 from .auth import CurrentUser, get_current_user, require_roles
 from .database import build_engine, build_session_factory, get_session
-from .mcp_discovery import discover_mcp_server
+from .mcp_discovery import discover_mcp_server, invoke_mcp_tool
 from .models import Base
+from .operations import (
+    authorize_mcp_invocation,
+    decide_asset_approval,
+    decide_human_review,
+    governance_portfolio,
+    list_mcp_invocations,
+    record_mcp_invocation,
+    request_asset_approval,
+    run_detail,
+    runtime_portfolio,
+)
 from .repository import (
     create_asset,
     dashboard_summary,
@@ -25,10 +37,19 @@ from .repository import (
 )
 from .schemas import (
     AgentDetailResponse,
+    ApprovalDecisionRequest,
     AssetDetailResponse,
     AssetResponse,
     DashboardSummary,
+    GovernanceApproval,
+    GovernancePortfolio,
     GovernanceTransitionRequest,
+    HumanReviewDecisionRequest,
+    McpInvocationView,
+    McpToolInvocationRequest,
+    McpToolInvocationResponse,
+    RunDetailResponse,
+    RuntimePortfolio,
     SessionResponse,
 )
 from .seed import seed_demo_assets
@@ -48,7 +69,7 @@ def create_app(engine: Engine | None = None, *, seed_demo: bool = True) -> FastA
 
     application = FastAPI(
         title="Northstar Control Plane",
-        version="0.4.0",
+        version="0.5.0",
         description="Governance API for A2A-ready agentic workflows.",
         lifespan=lifespan,
     )
@@ -239,6 +260,210 @@ def create_app(engine: Engine | None = None, *, seed_demo: bool = True) -> FastA
                 detail="Agent detail record not found.",
             )
         return detail
+
+    @application.get(
+        "/api/v1/governance",
+        response_model=GovernancePortfolio,
+        tags=["governance"],
+    )
+    def get_governance_portfolio(
+        session: Session = Depends(get_session),
+        _user: CurrentUser = Depends(require_roles("viewer")),
+    ) -> GovernancePortfolio:
+        return governance_portfolio(session)
+
+    @application.post(
+        "/api/v1/assets/{asset_id}/versions/{version}/approvals",
+        response_model=GovernanceApproval,
+        status_code=status.HTTP_201_CREATED,
+        tags=["governance"],
+    )
+    def request_governance_approval(
+        asset_id: str,
+        version: str,
+        transition: GovernanceTransitionRequest,
+        session: Session = Depends(get_session),
+        user: CurrentUser = Depends(require_roles("operator", "admin")),
+    ) -> GovernanceApproval:
+        try:
+            return request_asset_approval(
+                session,
+                asset_id=asset_id,
+                version=version,
+                target_state=transition.target_state,
+                note=transition.note,
+                actor=user,
+            )
+        except LookupError as error:
+            raise HTTPException(status_code=404, detail=str(error)) from error
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+
+    @application.post(
+        "/api/v1/governance/approvals/{approval_id}/decision",
+        response_model=GovernanceApproval,
+        tags=["governance"],
+    )
+    def decide_governance_approval(
+        approval_id: str,
+        decision: ApprovalDecisionRequest,
+        session: Session = Depends(get_session),
+        user: CurrentUser = Depends(require_roles("reviewer", "admin")),
+    ) -> GovernanceApproval:
+        approval = decide_asset_approval(
+            session,
+            approval_id=approval_id,
+            decision=decision.decision,
+            note=decision.note,
+            actor=user,
+        )
+        if not approval:
+            raise HTTPException(
+                status_code=404,
+                detail="Pending approval not found.",
+            )
+        return approval
+
+    @application.get(
+        "/api/v1/runtime",
+        response_model=RuntimePortfolio,
+        tags=["runtime"],
+    )
+    def get_runtime_portfolio(
+        session: Session = Depends(get_session),
+        _user: CurrentUser = Depends(require_roles("viewer")),
+    ) -> RuntimePortfolio:
+        return runtime_portfolio(session)
+
+    @application.get(
+        "/api/v1/runtime/runs/{run_id}",
+        response_model=RunDetailResponse,
+        tags=["runtime"],
+    )
+    def get_run_detail(
+        run_id: str,
+        session: Session = Depends(get_session),
+        _user: CurrentUser = Depends(require_roles("viewer")),
+    ) -> RunDetailResponse:
+        detail = run_detail(session, run_id)
+        if not detail:
+            raise HTTPException(status_code=404, detail="Workflow run not found.")
+        return detail
+
+    @application.post(
+        "/api/v1/runtime/reviews/{review_id}/decision",
+        response_model=RunDetailResponse,
+        tags=["runtime"],
+    )
+    def decide_runtime_review(
+        review_id: str,
+        decision: HumanReviewDecisionRequest,
+        session: Session = Depends(get_session),
+        user: CurrentUser = Depends(require_roles("reviewer", "admin")),
+    ) -> RunDetailResponse:
+        detail = decide_human_review(
+            session,
+            review_id=review_id,
+            decision=decision.decision,
+            rationale=decision.rationale,
+            actor=user,
+        )
+        if not detail:
+            raise HTTPException(
+                status_code=404,
+                detail="Pending human review not found.",
+            )
+        return detail
+
+    @application.get(
+        "/api/v1/mcp-gateway/invocations",
+        response_model=list[McpInvocationView],
+        tags=["mcp-gateway"],
+    )
+    def get_mcp_invocations(
+        session: Session = Depends(get_session),
+        _user: CurrentUser = Depends(require_roles("viewer")),
+    ) -> list[McpInvocationView]:
+        return list_mcp_invocations(session)
+
+    @application.post(
+        "/api/v1/mcp-gateway/invoke",
+        response_model=McpToolInvocationResponse,
+        tags=["mcp-gateway"],
+    )
+    async def invoke_governed_mcp_tool(
+        request: McpToolInvocationRequest,
+        session: Session = Depends(get_session),
+        user: CurrentUser = Depends(get_current_user),
+    ) -> McpToolInvocationResponse:
+        request_id = str(uuid4())
+        allowed, reason = authorize_mcp_invocation(
+            session,
+            tool_name=request.tool_name,
+            run_id=request.run_id,
+            stage_id=request.stage_id,
+            actor=user,
+        )
+        if not allowed:
+            record_mcp_invocation(
+                session,
+                request_id=request_id,
+                server_asset_id=request.server_asset_id,
+                tool_name=request.tool_name,
+                run_id=request.run_id,
+                stage_id=request.stage_id,
+                actor=user,
+                decision="denied",
+                reason=reason,
+                arguments=request.arguments,
+                result=None,
+            )
+            raise HTTPException(status_code=403, detail=reason)
+        endpoint = os.getenv(
+            "NORTHSTAR_FIXTURE_MCP_URL",
+            "http://localhost:8090/mcp",
+        )
+        try:
+            result = await invoke_mcp_tool(
+                endpoint,
+                request.tool_name,
+                request.arguments,
+            )
+        except Exception as error:
+            reason = f"Upstream MCP call failed: {type(error).__name__}."
+            record_mcp_invocation(
+                session,
+                request_id=request_id,
+                server_asset_id=request.server_asset_id,
+                tool_name=request.tool_name,
+                run_id=request.run_id,
+                stage_id=request.stage_id,
+                actor=user,
+                decision="error",
+                reason=reason,
+                arguments=request.arguments,
+                result=None,
+            )
+            raise HTTPException(status_code=502, detail=reason) from error
+        record_mcp_invocation(
+            session,
+            request_id=request_id,
+            server_asset_id=request.server_asset_id,
+            tool_name=request.tool_name,
+            run_id=request.run_id,
+            stage_id=request.stage_id,
+            actor=user,
+            decision="allowed",
+            reason=reason,
+            arguments=request.arguments,
+            result=result,
+        )
+        return McpToolInvocationResponse(
+            request_id=request_id,
+            decision="allowed",
+            reason=reason,
+            result=result,
+        )
 
     return application
 

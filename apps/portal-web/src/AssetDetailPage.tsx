@@ -230,9 +230,10 @@ function McpDetail({
             label={live?.reachable ? "Live" : live ? "Unavailable" : "Not checked"}
           />
         </Stack>
-        <Typography className="body-emphasis">{metadata.local_endpoint}</Typography>
+        <Typography className="body-emphasis">{metadata.endpoint}</Typography>
         <div className="metadata-grid">
           <LabelValue label="Transport" value={metadata.transport} />
+          <LabelValue label="Exposure" value={metadata.exposure} />
           <LabelValue label="Declared protocol" value={metadata.protocol_version} />
           <LabelValue label="Negotiated protocol" value={live?.protocol_version} />
           <LabelValue label="Server" value={live?.server?.name} />

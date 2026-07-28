@@ -130,3 +130,119 @@ export interface AssetDetail {
     error?: string;
   } | null;
 }
+
+export interface GovernanceApproval {
+  approval_id: string;
+  asset_id: string;
+  version: string;
+  display_name: string;
+  asset_type: AssetType;
+  current_state: GovernanceState;
+  target_state: GovernanceState;
+  status: "pending" | "approved" | "rejected";
+  requested_by: string;
+  request_note: string;
+  decided_by: string | null;
+  decision_note: string | null;
+  created_at: string;
+  decided_at: string | null;
+}
+
+export interface GovernanceEvidence {
+  evidence_id: string;
+  asset_id: string;
+  version: string;
+  evidence_type: string;
+  title: string;
+  status: string;
+  reference: string;
+  collected_by: string;
+  created_at: string;
+}
+
+export interface GovernancePortfolio {
+  approvals: GovernanceApproval[];
+  evidence: GovernanceEvidence[];
+  state_counts: Record<string, number>;
+  allowed_transitions: Record<string, GovernanceState[]>;
+}
+
+export interface RuntimeStage {
+  stage_id: string;
+  display_name: string;
+  status: string;
+  kind: string;
+  started_at: string | null;
+  completed_at: string | null;
+  attempt: number;
+  summary: string | null;
+}
+
+export interface WorkflowRun {
+  run_id: string;
+  workflow_asset_id: string;
+  workflow_version: string;
+  workflow_name: string;
+  status: string;
+  current_stage_id: string | null;
+  correlation: Record<string, any>;
+  stages: RuntimeStage[];
+  checkpoint_ref: string | null;
+  error_code: string | null;
+  error_summary: string | null;
+  started_at: string;
+  updated_at: string;
+}
+
+export interface HumanReview {
+  review_id: string;
+  run_id: string;
+  stage_id: string;
+  title: string;
+  reason: string;
+  policy_evidence: string[];
+  requested_action: Record<string, any>;
+  status: string;
+  requested_at: string;
+  expires_at: string;
+  decided_by: string | null;
+  decision: string | null;
+  rationale: string | null;
+  decided_at: string | null;
+}
+
+export interface RuntimePortfolio {
+  runs: WorkflowRun[];
+  reviews: HumanReview[];
+  status_counts: Record<string, number>;
+}
+
+export interface RuntimeEvent {
+  event_id: string;
+  run_id: string;
+  event_type: string;
+  stage_id: string | null;
+  actor_id: string;
+  payload: Record<string, any>;
+  occurred_at: string;
+}
+
+export interface RunDetail {
+  run: WorkflowRun;
+  events: RuntimeEvent[];
+  review: HumanReview | null;
+}
+
+export interface McpInvocation {
+  request_id: string;
+  server_asset_id: string;
+  tool_name: string;
+  run_id: string | null;
+  stage_id: string | null;
+  actor_email: string;
+  decision: string;
+  reason: string;
+  arguments: Record<string, any>;
+  result: Record<string, any> | null;
+  created_at: string;
+}
