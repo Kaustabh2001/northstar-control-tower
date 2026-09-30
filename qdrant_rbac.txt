@@ -1,0 +1,164 @@
+The Qdrant URL doesn't move. You keep the same ingress host, add auth annotations to it, and the ingress controller calls your auth server before any request reaches Qdrant. Nobody can reach Qdrant "directly" through that URL anymore.
+
+## 1. Qdrant Helm values (the ingress lives here)
+
+Split it into **two ingresses**: API clients need a `401` (a redirect breaks SDKs), while browsers hitting the dashboard should be sent to Keycloak login.
+
+```yaml
+# values.yaml for qdrant chart
+apiKey: "<read-write-key>"          # also the JWT signing secret if you use Option B
+readOnlyApiKey: "<read-only-key>"
+
+# config:
+#   service:
+#     jwt_rbac: true                # only for Option B
+
+service:
+  type: ClusterIP                   # never LoadBalancer/NodePort
+
+ingress:
+  enabled: true
+  ingressClassName: nginx
+  annotations:
+    nginx.ingress.kubernetes.io/auth-url: "http://auth-server.auth.svc.cluster.local:8080/qdrant/authz"
+    nginx.ingress.kubernetes.io/auth-response-headers: "api-key"
+    nginx.ingress.kubernetes.io/auth-cache-key: "$http_authorization$http_api_key"   # optional
+    nginx.ingress.kubernetes.io/auth-cache-duration: "200 30s"                         # optional
+  hosts:
+    - host: qdrant.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+          servicePort: 6333
+  tls:
+    - secretName: qdrant-tls
+      hosts: [qdrant.example.com]
+```
+
+Then add a separate Ingress for the dashboard, which includes the browser redirect:
+
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: qdrant-dashboard
+  namespace: qdrant
+  annotations:
+    nginx.ingress.kubernetes.io/auth-url: "http://auth-server.auth.svc.cluster.local:8080/qdrant/authz"
+    nginx.ingress.kubernetes.io/auth-signin: "https://auth.example.com/login?rd=$scheme://$host$escaped_request_uri"
+    nginx.ingress.kubernetes.io/auth-response-headers: "api-key"
+spec:
+  ingressClassName: nginx
+  tls:
+    - secretName: qdrant-tls
+      hosts: [qdrant.example.com]
+  rules:
+    - host: qdrant.example.com
+      http:
+        paths:
+          - path: /dashboard
+            pathType: Prefix
+            backend:
+              service:
+                name: qdrant          # check the service name: kubectl get svc -n qdrant
+                port:
+                  number: 6333
+```
+
+The `/dashboard` path wins over `/` because it's the longer prefix. Note that the dashboard also makes API calls to `/collections/...`, and those go through the first ingress. They'll succeed because the session cookie gets sent with them (see step 2).
+
+`auth-url` uses in-cluster service DNS because the ingress controller calls it internally. `auth-signin` must be a public URL because the browser follows it.
+
+## 2. Auth server: what the endpoints do
+
+**`GET /qdrant/authz`**, called by the ingress on every request:
+
+- Read the Keycloak token from `Authorization: Bearer ...`, the `api-key` header (for SDKs where you pass the token as the key), or a session cookie (for browsers).
+- If there's no token or it's invalid, return **401**. The ingress then returns 401 to the client, or redirects to `auth-signin` on the dashboard ingress.
+- If the token is valid but the role has no Qdrant access, return **403**.
+- If the token is valid and allowed, return **200** with the header `api-key: <read-only key | read-write key | minted JWT>`.
+
+The ingress passes `X-Original-URL` and `X-Original-Method`, so you can apply rules like "GET/search only for readers" if you want to.
+
+Rough sketch (FastAPI):
+
+```python
+@app.get("/qdrant/authz")
+def authz(request: Request):
+    token = extract_token(request)          # Bearer / api-key header / cookie
+    if not token:
+        return Response(status_code=401)
+    try:
+        claims = verify_keycloak_jwt(token) # JWKS, iss, aud, exp
+    except InvalidToken:
+        return Response(status_code=401)
+
+    profile = resolve_profile(claims)       # your existing role/profile config
+    if "qdrant:write" in profile.permissions:
+        key = QDRANT_RW_KEY
+    elif "qdrant:read" in profile.permissions:
+        key = QDRANT_RO_KEY
+    else:
+        return Response(status_code=403)
+
+    return Response(status_code=200, headers={"api-key": key})
+```
+
+**`GET /login?rd=...`** is only needed for browser access. It starts the Keycloak authorization-code flow and stores `rd` in state. The callback exchanges the code, sets a session cookie with `Domain=.example.com`, `Secure`, `HttpOnly`, and `SameSite=Lax`, then redirects back to `rd`. The cookie domain is important: it has to cover `qdrant.example.com` so the ingress forwards the cookie to `/qdrant/authz`.
+
+If you'd rather not build the browser flow yourself, put **oauth2-proxy** (configured for Keycloak) in front of `/dashboard` and keep your auth server for API traffic.
+
+## 3. Block every path that skips the ingress
+
+Annotations only protect traffic that goes through the ingress. Add a NetworkPolicy so the Qdrant pods accept connections only from the ingress controller:
+
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: qdrant-ingress-only
+  namespace: qdrant
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: qdrant
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+      ports:
+        - port: 6333
+    - from:                       # Qdrant peers talking to each other (if clustered)
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: qdrant
+      ports:
+        - port: 6335
+```
+
+If some in-cluster apps call Qdrant directly, add their namespaces here. Also check the pod labels with `kubectl get pods -n qdrant --show-labels`, and confirm your CNI enforces NetworkPolicy (Calico and Cilium do; plain flannel doesn't).
+
+## 4. Test it
+
+```bash
+# no token → 401
+curl -i https://qdrant.example.com/collections
+
+# client sending a raw Qdrant key but no Keycloak token → still 401 (auth server rejects it)
+curl -i -H "api-key: <read-write-key>" https://qdrant.example.com/collections
+
+# valid Keycloak token → 200
+TOKEN=$(curl -s -d "grant_type=client_credentials&client_id=svc-a&client_secret=..." \
+  https://keycloak.example.com/realms/<realm>/protocol/openid-connect/token | jq -r .access_token)
+curl -i -H "Authorization: Bearer $TOKEN" https://qdrant.example.com/collections
+
+# read-only user trying to write → 403 from Qdrant
+curl -i -X PUT -H "Authorization: Bearer $TOKEN" https://qdrant.example.com/collections/test \
+  -H 'Content-Type: application/json' -d '{"vectors":{"size":4,"distance":"Cosine"}}'
+
+# browser → /dashboard should bounce to Keycloak login
+```
+
+The second test is the important one: it proves that holding a Qdrant key alone isn't enough. Once the Keycloak layer is in place, you should also rotate the Qdrant keys and keep them only in the auth server's secret, so no client ever holds them.
