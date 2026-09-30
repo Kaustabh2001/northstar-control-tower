@@ -1,164 +1,97 @@
-The Qdrant URL doesn't move. You keep the same ingress host, add auth annotations to it, and the ingress controller calls your auth server before any request reaches Qdrant. Nobody can reach Qdrant "directly" through that URL anymore.
+Your design fits this pattern well. The only change is **which token the ingress check validates**: your auth server's own token, not Keycloak's. Keycloak drops out of the Qdrant request path entirely; it's only involved when a token is first issued.
 
-## 1. Qdrant Helm values (the ingress lives here)
+## Adapted flow
 
-Split it into **two ingresses**: API clients need a `401` (a redirect breaks SDKs), while browsers hitting the dashboard should be sent to Keycloak login.
+```text
+Login time (already exists):
+  user/service → Keycloak (authenticate) → auth server
+  auth server: validate KC token → read group → resolve role → issue AUTH-SERVER token
 
-```yaml
-# values.yaml for qdrant chart
-apiKey: "<read-write-key>"          # also the JWT signing secret if you use Option B
-readOnlyApiKey: "<read-only-key>"
-
-# config:
-#   service:
-#     jwt_rbac: true                # only for Option B
-
-service:
-  type: ClusterIP                   # never LoadBalancer/NodePort
-
-ingress:
-  enabled: true
-  ingressClassName: nginx
-  annotations:
-    nginx.ingress.kubernetes.io/auth-url: "http://auth-server.auth.svc.cluster.local:8080/qdrant/authz"
-    nginx.ingress.kubernetes.io/auth-response-headers: "api-key"
-    nginx.ingress.kubernetes.io/auth-cache-key: "$http_authorization$http_api_key"   # optional
-    nginx.ingress.kubernetes.io/auth-cache-duration: "200 30s"                         # optional
-  hosts:
-    - host: qdrant.example.com
-      paths:
-        - path: /
-          pathType: Prefix
-          servicePort: 6333
-  tls:
-    - secretName: qdrant-tls
-      hosts: [qdrant.example.com]
+Every Qdrant request (new):
+  service ──(auth-server token)──► qdrant.example.com (ingress)
+                                        │ subrequest
+                                        ▼
+                               auth server /qdrant/authz
+                               verify OWN token → role → Qdrant permission
+                                        │ 200 + api-key header
+                                        ▼
+                                     Qdrant
 ```
 
-Then add a separate Ingress for the dashboard, which includes the browser redirect:
+## What changes vs. what I described earlier
+
+**Keycloak:** you don't need the `qdrant` client, client roles, or audience mapper. Keep your groups and the client your auth server already uses. The group → role mapping stays in your auth server config.
+
+**Ingress:** no change. It's the same `auth-url` and `auth-response-headers: api-key` annotations. Ingress-nginx doesn't care what kind of token it is.
+
+**Auth server config:** add Qdrant permissions to your existing roles/profiles, for example:
 
 ```yaml
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: qdrant-dashboard
-  namespace: qdrant
-  annotations:
-    nginx.ingress.kubernetes.io/auth-url: "http://auth-server.auth.svc.cluster.local:8080/qdrant/authz"
-    nginx.ingress.kubernetes.io/auth-signin: "https://auth.example.com/login?rd=$scheme://$host$escaped_request_uri"
-    nginx.ingress.kubernetes.io/auth-response-headers: "api-key"
-spec:
-  ingressClassName: nginx
-  tls:
-    - secretName: qdrant-tls
-      hosts: [qdrant.example.com]
-  rules:
-    - host: qdrant.example.com
-      http:
-        paths:
-          - path: /dashboard
-            pathType: Prefix
-            backend:
-              service:
-                name: qdrant          # check the service name: kubectl get svc -n qdrant
-                port:
-                  number: 6333
+roles:
+  ml-engineer:
+    services:
+      qdrant:
+        access: rw                 # Option A: picks read-write key
+  analyst:
+    services:
+      qdrant:
+        access: r
+  rag-service:
+    services:
+      qdrant:
+        collections:               # Option B: minted Qdrant JWT
+          - { name: docs,    access: r }
+          - { name: support, access: rw }
 ```
 
-The `/dashboard` path wins over `/` because it's the longer prefix. Note that the dashboard also makes API calls to `/collections/...`, and those go through the first ingress. They'll succeed because the session cookie gets sent with them (see step 2).
-
-`auth-url` uses in-cluster service DNS because the ingress controller calls it internally. `auth-signin` must be a public URL because the browser follows it.
-
-## 2. Auth server: what the endpoints do
-
-**`GET /qdrant/authz`**, called by the ingress on every request:
-
-- Read the Keycloak token from `Authorization: Bearer ...`, the `api-key` header (for SDKs where you pass the token as the key), or a session cookie (for browsers).
-- If there's no token or it's invalid, return **401**. The ingress then returns 401 to the client, or redirects to `auth-signin` on the dashboard ingress.
-- If the token is valid but the role has no Qdrant access, return **403**.
-- If the token is valid and allowed, return **200** with the header `api-key: <read-only key | read-write key | minted JWT>`.
-
-The ingress passes `X-Original-URL` and `X-Original-Method`, so you can apply rules like "GET/search only for readers" if you want to.
-
-Rough sketch (FastAPI):
+**`/qdrant/authz` endpoint:** verify your own token instead of Keycloak's:
 
 ```python
 @app.get("/qdrant/authz")
 def authz(request: Request):
-    token = extract_token(request)          # Bearer / api-key header / cookie
+    token = extract_token(request)              # Bearer / api-key header / cookie
     if not token:
         return Response(status_code=401)
     try:
-        claims = verify_keycloak_jwt(token) # JWKS, iss, aud, exp
+        claims = verify_own_token(token)        # your signing key, iss, exp, aud
     except InvalidToken:
         return Response(status_code=401)
 
-    profile = resolve_profile(claims)       # your existing role/profile config
-    if "qdrant:write" in profile.permissions:
-        key = QDRANT_RW_KEY
-    elif "qdrant:read" in profile.permissions:
-        key = QDRANT_RO_KEY
-    else:
+    if is_revoked(claims["jti"]):               # optional, you control this now
+        return Response(status_code=401)
+
+    perm = config.roles.get(claims["role"], {}).get("services", {}).get("qdrant")
+    if not perm:
         return Response(status_code=403)
+
+    if "collections" in perm:                   # Option B
+        key = mint_qdrant_jwt(perm["collections"], ttl=300)
+    else:                                       # Option A
+        key = QDRANT_RW_KEY if perm["access"] == "rw" else QDRANT_RO_KEY
 
     return Response(status_code=200, headers={"api-key": key})
 ```
 
-**`GET /login?rd=...`** is only needed for browser access. It starts the Keycloak authorization-code flow and stores `rd` in state. The callback exchanges the code, sets a session cookie with `Domain=.example.com`, `Secure`, `HttpOnly`, and `SameSite=Lax`, then redirects back to `rd`. The cookie domain is important: it has to cover `qdrant.example.com` so the ingress forwards the cookie to `/qdrant/authz`.
+This is actually simpler than the Keycloak version: validating your own token is a local signature check with no JWKS fetching, and the role is already in the token, so no extra lookup is needed.
 
-If you'd rather not build the browser flow yourself, put **oauth2-proxy** (configured for Keycloak) in front of `/dashboard` and keep your auth server for API traffic.
+## Things to watch in this design
 
-## 3. Block every path that skips the ingress
+- **Audience:** if your auth-server tokens are accepted by many services, add an `aud` or `services` claim and have `/qdrant/authz` require `qdrant` in it. Otherwise any valid token from your system reaches Qdrant (and then only the role decides).
+- **Group changes lag:** if someone is removed from a Keycloak group, their auth-server token keeps its role until it expires. Keep the TTL short or use the `jti` denylist shown above. Since `/qdrant/authz` runs on every request, a denylist check there takes effect immediately.
+- **Re-read the role config per request, not from the token alone,** if you want config changes (such as downgrading `rw` to `r`) to apply without reissuing tokens. The code above already does this: the token carries the role name, and the permission is looked up from current config.
+- **Dashboard login:** the `/login` redirect goes to *your* auth server's login (which bounces to Keycloak as it does today). After the callback, set the auth-server token in a cookie on `.example.com` so the ingress forwards it to `/qdrant/authz`.
+- **SDKs:** services pass the auth-server token as the Qdrant client's `api_key`, or send it as `Authorization: Bearer`. The ingress then swaps it for the real key.
 
-Annotations only protect traffic that goes through the ingress. Add a NetworkPolicy so the Qdrant pods accept connections only from the ingress controller:
+## Alternative: skip the ingress hop entirely
 
-```yaml
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: qdrant-ingress-only
-  namespace: qdrant
-spec:
-  podSelector:
-    matchLabels:
-      app.kubernetes.io/name: qdrant
-  policyTypes: [Ingress]
-  ingress:
-    - from:
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: ingress-nginx
-      ports:
-        - port: 6333
-    - from:                       # Qdrant peers talking to each other (if clustered)
-        - podSelector:
-            matchLabels:
-              app.kubernetes.io/name: qdrant
-      ports:
-        - port: 6335
-```
+Since your auth server already issues tokens, it could issue a **Qdrant JWT directly**, with `jwt_rbac: true` in Qdrant, signed HS256 with the Qdrant API key and carrying collection grants. Services would call something like `POST /token/qdrant` with their auth-server token, get back a Qdrant JWT, and use it as the `api_key`. Qdrant validates it itself, so no `auth-url` annotation is needed.
 
-If some in-cluster apps call Qdrant directly, add their namespaces here. Also check the pod labels with `kubectl get pods -n qdrant --show-labels`, and confirm your CNI enforces NetworkPolicy (Calico and Cilium do; plain flannel doesn't).
+| | Forward-auth at ingress | Auth server mints Qdrant JWT |
+|---|---|---|
+| Per-request latency | Extra hop (cacheable) | None |
+| Revocation | Immediate (denylist) | Only at JWT expiry |
+| Central audit log | Every request | Only token issuance |
+| Client changes | None; send existing token | Fetch and refresh a second token |
+| Auth server down | Qdrant unreachable | Existing JWTs keep working |
 
-## 4. Test it
-
-```bash
-# no token → 401
-curl -i https://qdrant.example.com/collections
-
-# client sending a raw Qdrant key but no Keycloak token → still 401 (auth server rejects it)
-curl -i -H "api-key: <read-write-key>" https://qdrant.example.com/collections
-
-# valid Keycloak token → 200
-TOKEN=$(curl -s -d "grant_type=client_credentials&client_id=svc-a&client_secret=..." \
-  https://keycloak.example.com/realms/<realm>/protocol/openid-connect/token | jq -r .access_token)
-curl -i -H "Authorization: Bearer $TOKEN" https://qdrant.example.com/collections
-
-# read-only user trying to write → 403 from Qdrant
-curl -i -X PUT -H "Authorization: Bearer $TOKEN" https://qdrant.example.com/collections/test \
-  -H 'Content-Type: application/json' -d '{"vectors":{"size":4,"distance":"Cosine"}}'
-
-# browser → /dashboard should bounce to Keycloak login
-```
-
-The second test is the important one: it proves that holding a Qdrant key alone isn't enough. Once the Keycloak layer is in place, you should also rotate the Qdrant keys and keep them only in the auth server's secret, so no client ever holds them.
+For high-QPS search traffic, the JWT-minting route with a 5–15 minute TTL is attractive. If you want immediate revocation and a full audit log, keep forward-auth. You can also combine them: mint JWTs for trusted internal services, and use forward-auth on the public ingress.
